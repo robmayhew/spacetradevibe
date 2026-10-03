@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { solid } from './model.js';
 import { SHAPES, GLASS } from './shapes.js';
+import { ESCORT_COLOR_HEX } from '../party/colors.js';
 
 export const PLAYER_COLOR = 0x8a98a8;
-export const ESCORT_COLORS = [0x66d4a8, 0x6aa8ff, 0xffb060, 0xd08cff];
+export const ESCORT_COLORS = ESCORT_COLOR_HEX.map((h) => parseInt(h.slice(1), 16));
 
 const flameGeo = new THREE.ShapeGeometry(new THREE.Shape(SHAPES.flame.map(([x, y]) => new THREE.Vector2(x, y))));
 const shieldGeo = new THREE.RingGeometry(4.3, 4.7, 40);

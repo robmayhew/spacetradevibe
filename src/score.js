@@ -33,6 +33,17 @@ export function hasRunClock(state) {
   return Number.isFinite(state?.runMs) && !!state?.runId;
 }
 
+const SYL_A = ['Ka', 'Ve', 'Or', 'Zan', 'Tel', 'Myr', 'Ax', 'Cor', 'Dra', 'Eos', 'Fal', 'Gor', 'Hel', 'Ix', 'Jor', 'Kel', 'Lum', 'Nov', 'Pyr', 'Rho', 'Sol', 'Tyr', 'Vex', 'Xan', 'Yra', 'Ar', 'Bel', 'Nym', 'Os'];
+const SYL_B = ['ra', 'on', 'is', 'ex', 'ia', 'us', 'or', 'an', 'eth', 'ul', 'ys', 'ar', 'iel', 'os', 'ion', 'ax'];
+
+export function randomCallsign() {
+  const a = SYL_A[Math.floor(Math.random() * SYL_A.length)];
+  const b = SYL_B[Math.floor(Math.random() * SYL_B.length)];
+  let name = a + b;
+  if (Math.random() < 0.45) name += `-${1 + Math.floor(Math.random() * 9)}`;
+  return name.slice(0, 16);
+}
+
 export function loadCallsign() {
   try {
     return localStorage.getItem(CALLSIGN_KEY) || '';
@@ -47,6 +58,14 @@ export function saveCallsign(name) {
   } catch {
     // storage unavailable
   }
+}
+
+export function ensureCallsign() {
+  const existing = loadCallsign().trim();
+  if (CALLSIGN_RE.test(existing)) return existing;
+  const name = randomCallsign();
+  saveCallsign(name);
+  return name;
 }
 
 export async function fetchBoard(sort = 'score') {

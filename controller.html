@@ -16,7 +16,8 @@
       <header>
         <div class="eyebrow">TXL Trader</div>
         <h1>Escort</h1>
-        <p class="status">Connecting…</p>
+        <p class="status">Scan the QR on the captain’s screen.</p>
+        <div class="ship-chip hidden"><span class="swatch"></span> Your ship</div>
         <div class="meter hull-meter hidden">
           <label>HULL</label>
           <div class="bar hull"><span></span></div>
@@ -24,8 +25,12 @@
         </div>
       </header>
       <form class="join-form hidden">
+        <div class="room-fields hidden">
+          <label for="room">Room code</label>
+          <input id="room" name="room" maxlength="5" spellcheck="false" autocomplete="off" />
+        </div>
         <label for="callsign">Callsign</label>
-        <input id="callsign" name="callsign" maxlength="16" autocomplete="nickname" value="ESCORT" />
+        <input id="callsign" name="callsign" maxlength="16" autocomplete="nickname" />
         <button class="btn primary" type="submit">Join</button>
       </form>
       <div class="controls hidden">

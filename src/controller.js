@@ -1,8 +1,9 @@
 import './style.css';
-import { CALLSIGN_RE } from './score.js';
-import { iceConfig, partyPost } from './party/api.js';
+import { CALLSIGN_RE, ensureCallsign, saveCallsign } from './score.js';
+import { partyPost } from './party/api.js';
+import { escortHex } from './party/colors.js';
 
-const room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
+let room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
 const $ = (s) => document.querySelector(s);
 const statusEl = $('.status');
 const form = $('.join-form');
@@ -13,14 +14,12 @@ const hullV = $('.hull-v');
 const stick = $('#stick');
 const knob = stick.querySelector('.knob');
 const fireBtn = $('#fire');
+const chip = $('.ship-chip');
 
 const pad = { mx: 0, my: 0, fire: false };
-let pc;
-let channel;
 let session;
-let since = 0;
 let pollTimer = 0;
-const pendingIce = [];
+let inputTimer = 0;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -33,112 +32,76 @@ function setHull(hull, maxHull) {
   hullV.textContent = `${h}/${maxHull}`;
 }
 
+function paintShip(color) {
+  const hex = escortHex(color);
+  chip.classList.remove('hidden');
+  chip.querySelector('.swatch').style.background = hex;
+  chip.querySelector('.swatch').style.boxShadow = `0 0 10px ${hex}`;
+  knob.style.background = hex;
+  knob.style.borderColor = hex;
+  knob.style.boxShadow = `0 0 14px ${hex}`;
+}
+
+function leave() {
+  if (!session) return;
+  navigator.sendBeacon?.(
+    '/api/party.php',
+    new Blob([JSON.stringify({ action: 'leave', room: session.room, token: session.token })], { type: 'application/json' }),
+  );
+}
+
 async function join(callsign) {
   setStatus('Joining…');
   session = await partyPost({ action: 'join', room, callsign });
-  pc = new RTCPeerConnection(iceConfig(session.iceServers));
-  channel = pc.createDataChannel('pad');
-  channel.onopen = () => {
-    setStatus('Linked · standing by');
-    controls.classList.remove('hidden');
-    startPad();
-  };
-  channel.onclose = () => setStatus('Link closed');
-  channel.onmessage = (ev) => {
-    let msg;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-    if (msg.t !== 'st') return;
-    if (msg.mode === 'travel') {
-      setStatus('In combat');
-      setHull(msg.hull ?? 0, msg.maxHull ?? 0);
-    } else {
-      setStatus('Standing by');
-      hullMeter.classList.add('hidden');
-    }
-  };
-  pc.onicecandidate = (ev) => {
-    if (!ev.candidate) return;
-    partyPost({
-      action: 'signal',
+  paintShip(session.color);
+  setStatus('Linked · standing by');
+  controls.classList.remove('hidden');
+  startPad();
+  await sendInput();
+  pollTimer = window.setInterval(poll, 100);
+  inputTimer = window.setInterval(sendInput, 100);
+  window.addEventListener('pagehide', leave);
+}
+
+async function sendInput() {
+  if (!session) return;
+  try {
+    await partyPost({
+      action: 'input',
       room: session.room,
       token: session.token,
-      to: session.host,
-      kind: 'ice',
-      payload: ev.candidate,
-    }).catch(() => {});
-  };
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'failed') setStatus('Could not link. Stay on the same Wi-Fi and scan again.');
-    if (pc.connectionState === 'connected') setStatus('Linked · standing by');
-  };
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await partyPost({
-    action: 'signal',
-    room: session.room,
-    token: session.token,
-    to: session.host,
-    kind: 'offer',
-    payload: pc.localDescription,
-  });
-  pollTimer = window.setInterval(poll, 400);
-  window.addEventListener('pagehide', () => {
-    navigator.sendBeacon?.(
-      '/api/party.php',
-      new Blob([JSON.stringify({ action: 'leave', room: session.room, token: session.token })], { type: 'application/json' }),
-    );
-  });
+      mx: pad.mx,
+      my: pad.my,
+      fire: pad.fire ? 1 : 0,
+    });
+  } catch (err) {
+    if (err.status === 404 || err.status === 403) {
+      setStatus(err.message || 'Captain left. Scan the QR again.');
+    }
+  }
 }
 
 async function poll() {
   if (!session) return;
   try {
-    const data = await partyPost({ action: 'poll', room: session.room, token: session.token, since });
-    since = data.since ?? since;
-    for (const sig of data.signals || []) {
-      if (sig.kind === 'answer') {
-        await pc.setRemoteDescription(sig.payload);
-        for (const c of pendingIce) {
-          try {
-            await pc.addIceCandidate(c);
-          } catch {
-            /* stale */
-          }
-        }
-        pendingIce.length = 0;
-      } else if (sig.kind === 'ice') {
-        if (!pc.remoteDescription) pendingIce.push(sig.payload);
-        else {
-          try {
-            await pc.addIceCandidate(sig.payload);
-          } catch {
-            /* stale */
-          }
-        }
-      }
+    const data = await partyPost({ action: 'poll', room: session.room, token: session.token });
+    if (typeof data.color === 'number') paintShip(data.color);
+    if (data.mode === 'travel') {
+      setStatus('In combat');
+      setHull(data.hull ?? 0, data.maxHull ?? 0);
+    } else {
+      setStatus('Linked · standing by');
+      hullMeter.classList.add('hidden');
     }
-  } catch {
-    /* brief API blip */
+  } catch (err) {
+    if (err.status === 404 || err.status === 403) {
+      setStatus(err.message || 'Captain left. Scan the QR again.');
+    }
   }
 }
 
 function startPad() {
   let stickId = null;
-  const send = () => {
-    if (channel?.readyState === 'open') {
-      try {
-        channel.send(JSON.stringify({ t: 'in', mx: pad.mx, my: pad.my, fire: pad.fire ? 1 : 0 }));
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-  window.setInterval(send, 50);
-
   const moveStick = (x, y) => {
     const r = stick.getBoundingClientRect();
     const cx = r.left + r.width / 2;
@@ -191,34 +154,36 @@ function startPad() {
   fireBtn.addEventListener('pointerleave', fireOff);
 }
 
-if (!/^[A-Z0-9]{5}$/.test(room)) {
-  setStatus('Scan the QR on the captain’s screen.');
+const roomInput = $('#room');
+$('#callsign').value = ensureCallsign();
+form.classList.remove('hidden');
+if (/^[A-Z0-9]{5}$/.test(room)) {
+  roomInput.value = room;
+  setStatus('Enter a callsign to join.');
 } else {
-  try {
-    const saved = localStorage.getItem('txl-escort-callsign') || 'ESCORT';
-    $('#callsign').value = saved;
-  } catch {
-    /* ignore */
-  }
-  form.classList.remove('hidden');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const callsign = $('#callsign').value.trim() || 'ESCORT';
-    if (!CALLSIGN_RE.test(callsign)) {
-      setStatus('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
-      return;
-    }
-    try {
-      localStorage.setItem('txl-escort-callsign', callsign);
-    } catch {
-      /* ignore */
-    }
-    form.classList.add('hidden');
-    try {
-      await join(callsign);
-    } catch (err) {
-      form.classList.remove('hidden');
-      setStatus(err.message || 'Could not join.');
-    }
-  });
+  $('.room-fields').classList.remove('hidden');
+  setStatus('Enter the room code from the captain’s screen.');
 }
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = (roomInput.value || room).trim().toUpperCase();
+  const callsign = $('#callsign').value.trim();
+  if (!/^[A-Z0-9]{5}$/.test(code)) {
+    setStatus('Enter the 5-character code from the captain’s screen.');
+    return;
+  }
+  if (!CALLSIGN_RE.test(callsign)) {
+    setStatus('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
+    return;
+  }
+  room = code;
+  saveCallsign(callsign);
+  form.classList.add('hidden');
+  try {
+    await join(callsign);
+  } catch (err) {
+    form.classList.remove('hidden');
+    setStatus(err.message || 'Could not join. Check the room code and try again.');
+  }
+});

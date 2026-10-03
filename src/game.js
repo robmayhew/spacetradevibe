@@ -9,9 +9,9 @@ import { renderLeaderboard } from './ui/leaderboard.js';
 import { StationScreen } from './ui/station.js';
 import {
   CALLSIGN_RE,
+  ensureCallsign,
   formatRunTime,
   hasRunClock,
-  loadCallsign,
   MIN_TIME_MS,
   runScore,
   saveCallsign,
@@ -72,10 +72,12 @@ export class Game {
     renderMenu(this.app.ui, {
       hasSave: !!load(),
       muted: this.app.audio.muted,
+      callsign: ensureCallsign(),
       onNew: () => this.newGame(),
       onContinue: () => this.continueGame(),
       onToggleMute: () => this.app.audio.toggleMute(),
       onLeaderboard: () => this.showLeaderboard(),
+      onCallsign: (name) => saveCallsign(name),
     });
   }
 
@@ -164,7 +166,7 @@ export class Game {
       onDone: (r) => setTimeout(() => {
         this.travel.dispose();
         this.travel = null;
-        if (!r.success) return this.applyTravelResult(contract, r);
+        if (!r.success || this.flight.skipDock) return this.applyTravelResult(contract, r);
         this.flight.hull = r.hull;
         this.screen = 'dock';
         this.startDock('dock', to, (d) => this.applyTravelResult(contract, { ...r, hull: d.hull, dockBumps: d.bumps }));
@@ -205,10 +207,12 @@ export class Game {
           [`Bounties (${r.kills} kills${r.bossKilled ? ', capital ship' : ''})`, `+${fmt(r.bounty)} cr`, 'accent'],
           clean
             ? ['Precision docking bonus', `+${fmt(dockBonus)} cr`, 'accent']
+            : r.dockBumps == null
+            ? null // test flight that skipped docking
             : [`Docking (${r.dockBumps} bump${r.dockBumps === 1 ? '' : 's'})`, 'No bonus', 'warn'],
           ['Total', `+${fmt(total)} cr`, 'accent big'],
           ['Hull', `${fmt(s.hull)} / ${fmt(stats.maxHull)}`],
-        ],
+        ].filter(Boolean),
         note: firstVisit ? `First visit to ${dest.name}. New lanes charted.` : '',
       };
       if (dest.terminus && !s.won) {
@@ -256,7 +260,7 @@ export class Game {
     const score = runScore(s.stats);
     const timed = hasRunClock(s);
     const timeLabel = timed ? formatRunTime(s.runMs) : '—';
-    const priorName = loadCallsign();
+    const priorName = ensureCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
         <h1 class="logo">TERMINUS<span>REACHED</span></h1>
@@ -275,7 +279,9 @@ export class Game {
           <div class="r-line"><span>Ships lost × 10,000</span><b class="warn">−${fmt(score.deathPts)}</b></div>
           <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
           ${
-            timed
+            s.cheated
+              ? '<p class="muted small">Test run: the dev console was used, so it cannot be posted.</p>'
+              : timed
               ? `<div class="submit-row">
                   <input type="text" maxlength="16" spellcheck="false" placeholder="Callsign" value="${escapeAttr(priorName)}" data-callsign>
                   <button class="btn primary" data-act="submit">Submit</button>
@@ -304,6 +310,7 @@ export class Game {
     const input = root.querySelector('[data-callsign]');
     const btn = root.querySelector('[data-act="submit"]');
     const callsign = (input?.value || '').trim();
+    if (s.cheated) return;
     if (!CALLSIGN_RE.test(callsign)) {
       status.textContent = 'Callsign must be 2–16 letters, numbers, spaces, or hyphens.';
       status.className = 'submit-status warn small';

@@ -17,6 +17,21 @@ npm run dev
 | 1–4, Q / E | Select weapon |
 | Esc / P | Pause (retreat option) |
 
+## Test console
+
+Press <kbd>`</kbd> (backtick) to open the test console. It is always available under `npm run dev`; on a deployed build add `?console` to the URL. Type `help` for the full list; Tab completes, ↑/↓ recall history.
+
+| Area | Commands |
+| --- | --- |
+| Ship & economy | `credits 5000` / `credits +500`, `repair`, `upgrade <system\|all> <level\|max>`, `rating 6`, `weapon <id\|all>`, `god` |
+| Map | `goto <id\|name>`, `terminus`, `reveal`, `systems`, `contracts` |
+| Flights | `fly [difficulty] [waves] [boss\|noboss] [nodock]`, `dock [tier] [undock]` |
+| In combat | `kill`, `skip`, `win`, `die`, `spawn <type> [count]` |
+| Docking | `land`, `spin <rad/s>` |
+| Tuning | `speed <0-8>` (0 freezes), `tune ENEMIES.scout.fire.homing 2` (live, resets on reload), `status` |
+
+Any command that changes the game marks the save as a **test run**, which can't be posted to the leaderboard.
+
 ## Layout
 
 - `src/data.js` holds all tuning: upgrade costs and scaling, weapons, enemies and goods.
@@ -43,4 +58,4 @@ No Node.js extension is required on the server. Local `npm run dev` still plays;
 
 The bottom-left QR opens a phone controller. Linked phones fly helper ships in combat (pulse laser at 20% of the captain's bolt damage). They do not replace the captain: an escort exploding does not end the flight or count as a death.
 
-After pulling this change on Plesk, run the new `party_rooms` and `party_signals` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php), and upload a fresh `dist/` that includes `controller.html`. Phones should be on the same Wi-Fi as the computer showing the game. There is no relay if a cellular network blocks the link.
+After pulling this change on Plesk, run the `party_live` statement in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php), and upload a fresh `dist/` that includes `controller.html`. Stick and fire go through `/api`, so a phone can join from cellular or another network. Each escort gets a distinct ship color.

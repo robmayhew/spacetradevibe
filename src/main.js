@@ -31,6 +31,8 @@ class App {
     this.input = new Input();
     this.audio = new Sfx();
     this.view = null;
+    this.timeScale = 1; // dev console `speed`
+    this.cheats = { god: false };
     this.party = new PartyHost(document.getElementById('party'));
     this.party.start();
 
@@ -70,8 +72,15 @@ class App {
   frame = (now) => {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    this.view?.update(dt);
-    this.game.tick(dt);
+    // Fast-forward runs several sub-steps so collisions don't tunnel; key presses only
+    // count in the first one so toggles (pause, weapon switch) don't fire repeatedly.
+    const steps = Math.max(1, Math.ceil(this.timeScale));
+    const step = (dt * this.timeScale) / steps;
+    for (let i = 0; i < steps; i++) {
+      this.view?.update(step);
+      this.game.tick(step);
+      if (i === 0 && steps > 1) this.input.endFrame();
+    }
     this.party?.tick(dt);
     this.composer.render(dt);
     this.input.endFrame();
@@ -81,3 +90,7 @@ class App {
 
 const app = new App();
 if (import.meta.env.DEV) window.__txl = app; // debugging handle in dev builds only
+// Test console: always in dev; on a deployed build only with ?console in the URL.
+if (import.meta.env.DEV || new URLSearchParams(location.search).has('console')) {
+  import('./dev/console.js').then(({ DevConsole }) => new DevConsole(app));
+}
