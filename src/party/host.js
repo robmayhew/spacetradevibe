@@ -23,7 +23,8 @@ export class PartyHost {
     this.root.innerHTML = `
       <div class="party-panel hidden">
         <div class="eyebrow">Escorts</div>
-        <img class="party-qr" alt="Join QR" />
+        <img class="party-qr" alt="Join QR" title="Hide QR" />
+        <button type="button" class="party-show hidden">QR code</button>
         <div class="party-code"></div>
         <p class="muted small party-hint">Scan to fly a helper ship</p>
         <ul class="party-crew"></ul>
@@ -31,9 +32,19 @@ export class PartyHost {
     this.el = {
       panel: this.root.querySelector('.party-panel'),
       qr: this.root.querySelector('.party-qr'),
+      show: this.root.querySelector('.party-show'),
       code: this.root.querySelector('.party-code'),
       crew: this.root.querySelector('.party-crew'),
     };
+    this.el.qr.addEventListener('click', () => this.setQrVisible(false));
+    this.el.show.addEventListener('click', () => this.setQrVisible(true));
+  }
+
+  setQrVisible(on) {
+    this.el.panel.classList.toggle('qr-hidden', !on);
+    this.el.qr.classList.toggle('hidden', !on);
+    this.el.show.classList.toggle('hidden', on);
+    document.body.classList.toggle('party-qr-hidden', !on);
   }
 
   async start() {
@@ -53,6 +64,7 @@ export class PartyHost {
       this.el.code.textContent = this.room;
       this.el.panel.classList.remove('hidden');
       document.body.classList.add('has-party');
+      this.setQrVisible(false);
       this.renderCrew();
       this.pollTimer = window.setInterval(() => this.poll(), 400);
       window.addEventListener('pagehide', this.leave);

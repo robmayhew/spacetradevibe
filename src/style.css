@@ -217,6 +217,8 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .st-header, .tabs, .st-footer { position: relative; z-index: 2; }
 body.has-party .st-footer { padding-left: 176px; }
 body.has-party .menu { padding-bottom: 190px; }
+body.has-party.party-qr-hidden .st-footer { padding-left: 28px; }
+body.has-party.party-qr-hidden .menu { padding-bottom: 88px; }
 
 /* Docking HUD */
 .objective { margin-top: 6px; font-family: var(--body); font-size: 18px; color: var(--text); letter-spacing: 0.02em; }
@@ -227,7 +229,11 @@ body.has-party .menu { padding-bottom: 190px; }
 
 #party { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
 .party-panel { pointer-events: auto; position: absolute; bottom: 16px; left: 14px; width: 148px; padding: 10px 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.party-qr { width: 128px; height: 128px; border-radius: 2px; background: #ddd6c8; }
+.party-qr { width: 128px; height: 128px; border-radius: 2px; background: #ddd6c8; cursor: pointer; }
+.party-panel.qr-hidden { width: auto; min-width: 108px; }
+.party-panel.qr-hidden .party-hint { display: none; }
+.party-show { font-family: var(--display); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); background: transparent; border: 1px solid var(--line); border-radius: 2px; padding: 6px 10px; cursor: pointer; }
+.party-show:hover { border-color: var(--cyan); box-shadow: 0 0 10px rgba(242, 165, 65, 0.35); }
 .party-code { font-family: var(--display); letter-spacing: 0.22em; font-size: 16px; color: var(--cyan); }
 .party-hint { margin: 0; text-align: center; font-size: 12px; line-height: 1.25; }
 .party-crew { list-style: none; margin: 0; padding: 0; width: 100%; font-size: 12px; }
