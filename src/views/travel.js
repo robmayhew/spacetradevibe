@@ -112,7 +112,6 @@ export class TravelView {
     this.infinite = !!contract.infinite;
     this.frameAcc = 0;
     this.demoAcc = 0;
-    this.demoBossAcc = 0;
 
     const waveCount = isFinal ? 5 : contract.waves;
     this.hasBoss = contract.forceBoss ?? (isFinal || Math.random() < 0.15 + 0.035 * this.d);
@@ -335,12 +334,12 @@ export class TravelView {
   }
 
   applyLoadout(state) {
-    this.d = 10;
-    this.hpMult = Math.pow(HP_GROWTH, this.d - 1);
-    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
-    this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
-    this.bulletSpeed = 1 + 0.04 * (this.d - 1);
-    this.fireRate = 1.1 + 0.06 * (this.d - 1);
+    this.d = 1;
+    this.hpMult = 1;
+    this.dmgMult = 1;
+    this.payMult = 1;
+    this.bulletSpeed = 1;
+    this.fireRate = 1.1;
     const stats = shipStats(state);
     this.stats = stats;
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
@@ -352,15 +351,18 @@ export class TravelView {
     this.playerMesh.visible = true;
     for (const slot of this.hud.el.slots) slot.classList.remove('locked');
     const diff = this.app.hud.querySelector('.diff b');
-    if (diff) diff.textContent = '10';
+    if (diff) diff.textContent = '1';
   }
 
   enterInfinite() {
     this.infinite = true;
     this.hasBoss = false;
     this.demoAcc = 0;
-    this.demoBossAcc = 0;
     this.spawnQueue = [];
+    for (const e of this.enemies) {
+      if (!e.dead && e.type !== 'scout' && e.type !== 'asteroid') this.killEnemy(e);
+    }
+    this.clearEnemyShots();
     if (this.phase === 'dead' || this.player.hull <= 0) {
       this.player.hull = this.player.maxHull;
       this.player.shield = this.player.maxShield;
@@ -372,29 +374,18 @@ export class TravelView {
 
   sustain(dt) {
     this.demoAcc += dt;
-    this.demoBossAcc += dt;
-    const living = this.enemies.filter((e) => !e.dead);
-    const hostiles = living.filter((e) => e.type !== 'asteroid' && e.type !== 'boss').length;
-    if (hostiles < 10 && living.length < 16 && this.demoAcc > 0.85) {
+    const hostiles = this.enemies.filter((e) => this.isHostile(e)).length;
+    if (hostiles < 5 && this.demoAcc > 1.6) {
       this.demoAcc = 0;
-      this.spawnDemoGroup(16 - living.length);
-    }
-    const bossAlive = living.some((e) => e.type === 'boss');
-    if (!bossAlive && living.length < 16 && this.demoBossAcc > 24) {
-      this.demoBossAcc = 0;
-      this.spawnEnemy('boss', 0, SPAWN_Y + 8);
-      this.hud.banner('WARNING', 'Hostile capital ship inbound', 'danger');
-      this.audio.play('bossWarn');
+      this.spawnDemoGroup(5 - hostiles);
     }
   }
 
   spawnDemoGroup(room) {
-    const types = Object.keys(ENEMIES).filter((id) => id !== 'boss' && id !== 'asteroid');
-    const type = pick(types);
-    const def = ENEMIES[type];
-    const n = Math.min(room, randInt(def.group[0], def.group[1]), 4);
+    const type = Math.random() < 0.25 ? 'asteroid' : 'scout';
+    const n = Math.min(room, type === 'scout' ? randInt(2, 3) : randInt(1, 2));
     const W = this.playHalfW;
-    for (let i = 0; i < n; i++) this.spawnEnemy(type, rand(-W * 0.9, W * 0.9), SPAWN_Y + i * 2);
+    for (let i = 0; i < n; i++) this.spawnEnemy(type, rand(-W * 0.8, W * 0.8), SPAWN_Y + i * 3);
   }
 
   nextWave() {
@@ -861,10 +852,10 @@ export class TravelView {
     const bs = this.bulletSpeed;
     switch (e.type) {
       case 'scout':
-        this.eShot(e.x, e.y - 2, 0, -e.def.fire.speed * bs, dmg, 0xff3366, e.def.fire.homing);
+        this.eShot(e.x, e.y - 2, 0, -e.def.fire.speed * bs, dmg, 0xff3366, this.infinite ? 0 : e.def.fire.homing);
         break;
       case 'fighter':
-        this.aimedShot(e, e.def.fire.speed * bs, dmg, 0xff8833, 0, e.def.fire.homing);
+        this.aimedShot(e, e.def.fire.speed * bs, dmg, 0xff8833, 0, this.infinite ? 0 : e.def.fire.homing);
         break;
       case 'gunship':
         for (let k = -2; k <= 2; k++) {

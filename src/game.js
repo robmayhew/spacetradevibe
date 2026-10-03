@@ -155,7 +155,7 @@ export class Game {
     const destId = here.links.find((id) => !this.galaxy.systems[id].terminus) ?? here.links[0];
     const contract = {
       dest: destId,
-      difficulty: 10,
+      difficulty: 1,
       good: 'Demo Cargo',
       pay: 1,
       dist: 0,
