@@ -1,5 +1,6 @@
-const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 const ALPHA = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const STALE_MS = 1000;
+const DROP_MS = 8000;
 
 function code(len = 5) {
   let s = '';
@@ -17,16 +18,25 @@ function now() {
   return Date.now();
 }
 
+function nextColor(escorts) {
+  const used = new Set(escorts.map((e) => e.color));
+  for (let i = 0; i < 4; i++) if (!used.has(i)) return i;
+  return 0;
+}
+
+function clampAxis(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-1, Math.min(1, n));
+}
+
 export function createPartyStore() {
   const rooms = new Map();
-  let signalId = 1;
 
   function prune() {
     const stale = now() - 2 * 60 * 60 * 1000;
-    const sigAge = now() - 2 * 60 * 1000;
-    for (const [code, room] of rooms) {
-      room.signals = room.signals.filter((s) => s.at > sigAge);
-      if (room.touched < stale) rooms.delete(code);
+    for (const [c, room] of rooms) {
+      if (room.touched < stale) rooms.delete(c);
     }
   }
 
@@ -45,14 +55,21 @@ export function createPartyStore() {
   function auth(room, tok) {
     if (room.hostToken === tok) return { role: 'host', peer: room.hostPeer };
     const e = room.escorts.find((x) => x.token === tok);
-    if (e) return { role: 'escort', peer: e.id };
+    if (e) return { role: 'escort', peer: e.id, color: e.color, callsign: e.callsign };
     const err = new Error('Bad party token.');
     err.status = 403;
     throw err;
   }
 
-  function publicEscorts(room) {
-    return room.escorts.map((e) => ({ id: e.id, callsign: e.callsign }));
+  function dropSilent(room) {
+    const cutoff = now() - DROP_MS;
+    const dead = [];
+    for (const [peer, live] of room.live) {
+      if (live.updated < cutoff) dead.push(peer);
+    }
+    if (!dead.length) return;
+    for (const peer of dead) room.live.delete(peer);
+    room.escorts = room.escorts.filter((e) => !dead.includes(e.id));
   }
 
   return {
@@ -70,10 +87,10 @@ export function createPartyStore() {
           hostToken: tok,
           hostPeer,
           escorts: [],
-          signals: [],
+          live: new Map(),
           touched: now(),
         });
-        return { ok: true, room: c, peer: hostPeer, token: tok, role: 'host', iceServers: ICE };
+        return { ok: true, room: c, peer: hostPeer, token: tok, role: 'host' };
       }
       if (action === 'join') {
         const c = String(body.room || '').toUpperCase();
@@ -96,51 +113,90 @@ export function createPartyStore() {
         }
         const peer = code(8);
         const tok = token();
-        room.escorts.push({ id: peer, token: tok, callsign });
-        return { ok: true, room: c, peer, token: tok, role: 'escort', host: room.hostPeer, iceServers: ICE };
+        const color = nextColor(room.escorts);
+        room.escorts.push({ id: peer, token: tok, callsign, color });
+        room.live.set(peer, { mx: 0, my: 0, fire: 0, hull: 1, maxHull: 1, mode: 'wait', updated: now() });
+        return { ok: true, room: c, peer, token: tok, role: 'escort', host: room.hostPeer, color, callsign };
       }
-      if (action === 'signal') {
+      if (action === 'input') {
         const room = getRoom(String(body.room || '').toUpperCase());
         const who = auth(room, String(body.token || ''));
-        const kind = body.kind;
-        if (!['offer', 'answer', 'ice'].includes(kind)) {
-          const err = new Error('Invalid signal.');
-          err.status = 400;
+        if (who.role !== 'escort') {
+          const err = new Error('Only an escort can send the pad.');
+          err.status = 403;
           throw err;
         }
-        const to = String(body.to || '').toUpperCase();
-        if (!/^[A-Z0-9]{8}$/.test(to)) {
-          const err = new Error('Invalid destination.');
-          err.status = 400;
-          throw err;
-        }
-        const json = JSON.stringify(body.payload ?? null);
-        if (json.length > 16384) {
-          const err = new Error('Signal is too large.');
-          err.status = 400;
-          throw err;
-        }
-        room.signals.push({
-          id: signalId++,
-          from: who.peer,
-          to,
-          kind,
-          payload: body.payload ?? null,
-          at: now(),
+        const prev = room.live.get(who.peer) || { hull: 1, maxHull: 1, mode: 'wait' };
+        room.live.set(who.peer, {
+          ...prev,
+          mx: clampAxis(body.mx),
+          my: clampAxis(body.my),
+          fire: body.fire ? 1 : 0,
+          updated: now(),
         });
+        return { ok: true };
+      }
+      if (action === 'vitals') {
+        const room = getRoom(String(body.room || '').toUpperCase());
+        const who = auth(room, String(body.token || ''));
+        if (who.role !== 'host') {
+          const err = new Error('Only the host can send vitals.');
+          err.status = 403;
+          throw err;
+        }
+        const mode = body.mode === 'travel' ? 'travel' : 'wait';
+        const hulls = Array.isArray(body.hulls) ? body.hulls.slice(0, 4) : [];
+        const byPeer = new Map();
+        for (const row of hulls) {
+          const peer = String(row?.peer || '').toUpperCase();
+          if (!/^[A-Z0-9]{8}$/.test(peer)) continue;
+          let hull = Number(row.hull);
+          let maxHull = Number(row.maxHull);
+          if (!Number.isFinite(hull) || hull < 0) hull = 0;
+          if (!Number.isFinite(maxHull) || maxHull < 1) maxHull = 1;
+          byPeer.set(peer, { hull, maxHull });
+        }
+        for (const e of room.escorts) {
+          const prev = room.live.get(e.id) || { mx: 0, my: 0, fire: 0, updated: now() };
+          const hull = byPeer.get(e.id);
+          room.live.set(e.id, {
+            ...prev,
+            mode,
+            hull: hull ? hull.hull : prev.hull ?? 1,
+            maxHull: hull ? hull.maxHull : prev.maxHull ?? 1,
+          });
+        }
         return { ok: true };
       }
       if (action === 'poll') {
         const room = getRoom(String(body.room || '').toUpperCase());
         const who = auth(room, String(body.token || ''));
-        const since = Number(body.since) || 0;
-        const mine = room.signals.filter((s) => s.id > since && s.to === who.peer).slice(0, 40);
-        const last = mine.length ? mine[mine.length - 1].id : since;
+        if (who.role === 'host') {
+          dropSilent(room);
+          const escorts = room.escorts.map((e) => {
+            const live = room.live.get(e.id);
+            const fresh = live && now() - live.updated <= STALE_MS;
+            return {
+              id: e.id,
+              callsign: e.callsign,
+              color: e.color ?? 0,
+              mx: fresh ? live.mx : 0,
+              my: fresh ? live.my : 0,
+              fire: fresh ? live.fire : 0,
+              hull: live?.hull ?? 1,
+              maxHull: live?.maxHull ?? 1,
+            };
+          });
+          return { ok: true, escorts };
+        }
+        const live = room.live.get(who.peer);
         return {
           ok: true,
-          since: last,
-          signals: mine.map(({ id, from, to, kind, payload }) => ({ id, from, to, kind, payload })),
-          escorts: publicEscorts(room),
+          mode: live?.mode === 'travel' ? 'travel' : 'wait',
+          hull: live?.hull ?? 1,
+          maxHull: live?.maxHull ?? 1,
+          color: who.color ?? 0,
+          callsign: who.callsign ?? 'ESCORT',
         };
       }
       if (action === 'leave') {
@@ -152,6 +208,7 @@ export function createPartyStore() {
           return { ok: true };
         }
         room.escorts = room.escorts.filter((e) => e.id !== who.peer);
+        room.live.delete(who.peer);
         return { ok: true };
       }
       if (action === 'drop') {
@@ -164,6 +221,7 @@ export function createPartyStore() {
         }
         const peer = String(body.peer || '').toUpperCase();
         room.escorts = room.escorts.filter((e) => e.id !== peer);
+        room.live.delete(peer);
         return { ok: true };
       }
       const err = new Error('Unknown action.');

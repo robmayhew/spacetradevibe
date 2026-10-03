@@ -422,14 +422,8 @@ export class TravelView {
 
   // ---------------------------------------------------------------- escorts
 
-  escortColor(id) {
-    let n = 0;
-    for (let i = 0; i < id.length; i++) n += id.charCodeAt(i);
-    return ESCORT_COLORS[n % ESCORT_COLORS.length];
-  }
-
   spawnHelper(inp) {
-    const color = this.escortColor(inp.id);
+    const color = ESCORT_COLORS[inp.color] ?? ESCORT_COLORS[0];
     const ship = createEscortShip(color);
     this.scene.add(ship.group);
     const h = {
