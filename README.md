@@ -37,4 +37,10 @@ The Vite build is static files. The shared Terminus board is PHP + MariaDB on th
 3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/`.
 4. Confirm PHP 8.1 or newer is selected for the domain (the Plesk default on current installs).
 
-No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host.
+No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host. Phone escorts use an in-memory party API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
+
+## Phone escorts
+
+The bottom-left QR opens a phone controller. Linked phones fly helper ships in combat (pulse laser at 20% of the captain's bolt damage). They do not replace the captain: an escort exploding does not end the flight or count as a death.
+
+After pulling this change on Plesk, run the new `party_rooms` and `party_signals` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php), and upload a fresh `dist/` that includes `controller.html`. Phones should be on the same Wi-Fi as the computer showing the game. There is no relay if a cellular network blocks the link.

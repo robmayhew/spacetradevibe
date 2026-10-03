@@ -21,3 +21,24 @@ CREATE TABLE IF NOT EXISTS rate_hits (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ip_created (ip, created_at)
 );
+
+CREATE TABLE IF NOT EXISTS party_rooms (
+  code CHAR(5) NOT NULL PRIMARY KEY,
+  host_token CHAR(32) NOT NULL,
+  host_peer CHAR(8) NOT NULL,
+  escorts TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  touched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY touched (touched_at)
+);
+
+CREATE TABLE IF NOT EXISTS party_signals (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  room CHAR(5) NOT NULL,
+  from_peer CHAR(8) NOT NULL,
+  to_peer CHAR(8) NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  payload TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY room_id (room, id)
+);

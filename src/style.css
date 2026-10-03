@@ -190,6 +190,7 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .wslot.active { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 12px rgba(242, 165, 65, 0.4); }
 .wslot.locked { opacity: 0.25; }
 .hud-bl { position: absolute; bottom: 22px; left: 20px; font-family: var(--body); font-size: 13px; color: var(--muted); max-width: 22vw; }
+.hud-bl.with-party { left: 176px; max-width: min(28vw, 280px); }
 .hud-bl b { color: var(--cyan); }
 .banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%) scale(0.95); text-align: center; opacity: 0; transition: opacity 0.35s, transform 0.35s; font-size: clamp(28px, 4vw, 48px); font-weight: 700; letter-spacing: 0.2em; color: var(--text); text-shadow: 0 3px 0 #000, 0 0 24px rgba(0, 0, 0, 0.9); text-transform: uppercase; white-space: nowrap; }
 .banner small { display: block; font-family: var(--body); font-size: 20px; letter-spacing: 0.08em; color: var(--muted); text-transform: none; margin-top: 6px; text-shadow: none; }
@@ -214,6 +215,8 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
   .modal { min-width: 0; width: calc(100vw - 32px); }
 }
 .st-header, .tabs, .st-footer { position: relative; z-index: 2; }
+body.has-party .st-footer { padding-left: 176px; }
+body.has-party .menu { padding-bottom: 190px; }
 
 /* Docking HUD */
 .objective { margin-top: 6px; font-family: var(--body); font-size: 18px; color: var(--text); letter-spacing: 0.02em; }
@@ -221,3 +224,25 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .dock-hud .hud-tc { top: auto; bottom: 22px; }
 .dock-hint { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 14px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold); text-shadow: 0 0 10px rgba(232, 199, 103, 0.6); opacity: 0; transition: opacity 0.2s; }
 .dock-hint.show { opacity: 1; }
+
+#party { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
+.party-panel { pointer-events: auto; position: absolute; bottom: 16px; left: 14px; width: 148px; padding: 10px 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.party-qr { width: 128px; height: 128px; border-radius: 2px; background: #ddd6c8; }
+.party-code { font-family: var(--display); letter-spacing: 0.22em; font-size: 16px; color: var(--cyan); }
+.party-hint { margin: 0; text-align: center; font-size: 12px; line-height: 1.25; }
+.party-crew { list-style: none; margin: 0; padding: 0; width: 100%; font-size: 12px; }
+.party-crew li { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.controller-page { overflow: hidden; touch-action: none; user-select: none; }
+.controller-page #pad { position: fixed; inset: 0; display: flex; flex-direction: column; padding: 16px 18px calc(18px + env(safe-area-inset-bottom)); }
+.controller-page header { text-align: center; }
+.controller-page header h1 { color: var(--cyan); font-size: 28px; }
+.controller-page .status { margin: 8px 0 0; color: var(--muted); }
+.controller-page .join-form { display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin: 24px auto 0; width: 100%; }
+.controller-page .join-form input { font-family: var(--display); font-size: 16px; letter-spacing: 0.08em; color: var(--text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 2px; padding: 12px; }
+.controller-page .controls { flex: 1; display: flex; align-items: stretch; justify-content: space-between; gap: 16px; padding: 24px 4px 8px; }
+.controller-page .stick { position: relative; width: min(46vw, 220px); height: min(46vw, 220px); align-self: flex-end; border-radius: 50%; border: 2px solid var(--line); background: rgba(0, 0, 0, 0.35); }
+.controller-page .knob { position: absolute; left: 50%; top: 50%; width: 42%; height: 42%; margin: -21% 0 0 -21%; border-radius: 50%; background: rgba(242, 165, 65, 0.35); border: 2px solid var(--cyan); }
+.controller-page .fire { align-self: flex-end; width: min(42vw, 200px); height: min(42vw, 200px); border-radius: 50%; border: 2px solid var(--red); background: rgba(208, 69, 58, 0.18); color: #e08a80; font-family: var(--display); font-size: 28px; letter-spacing: 0.16em; }
+.controller-page .fire.hot { background: rgba(208, 69, 58, 0.5); color: #fff; }
+.controller-page .hull-meter { max-width: 280px; margin: 12px auto 0; }

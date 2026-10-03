@@ -26,7 +26,7 @@ export class TravelHUD {
               <kbd>${i + 1}</kbd>${WEAPONS[id].name}</div>`,
           ).join('')}
         </div>
-        <div class="hud-bl">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-4 / Q E weapons · Esc pause</div>
+        <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-4 / Q E weapons · Esc pause</div>
         <div class="banner"></div>
         <div class="pause-overlay hidden">
           <div class="panel">

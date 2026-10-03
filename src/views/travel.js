@@ -3,11 +3,10 @@ import { Starfield } from '../fx/starfield.js';
 import { Particles } from '../fx/particles.js';
 import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx/model.js';
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
-import { PLAYER_COLOR } from '../fx/ship.js';
+import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
 import { shipStats } from '../state.js';
 import { TravelHUD } from '../ui/hud.js';
-import { createPlayerShip } from '../fx/ship.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
 
 const TOP = 50;
@@ -15,6 +14,11 @@ const BOTTOM = -50;
 const SPAWN_Y = 58;
 const MAX_PLAY_HALF_W = 70;
 const PLAYER_R = 1.3;
+const ESCORT_R = 1.05;
+const ESCORT_HULL = 28;
+const ESCORT_RATE = 4;
+const ESCORT_DMG = 0.2;
+const ESCORT_RESPAWN = 3;
 const HOMING_SHOT_LIFE = 4; // seconds before a tracking shot burns out
 const SEEKER_SHOT = [[0, 1.4], [0.6, -0.8], [0, -0.3], [-0.6, -0.8]];
 
@@ -85,6 +89,8 @@ export class TravelView {
       weapon: this.owned.includes(state.weapon) ? state.weapon : 'pulse',
     };
     this.buildPlayerMesh();
+    this.helpers = new Map();
+    this.app.party?.setMode('travel');
 
     this.enemies = [];
     this.pShots = [];
@@ -164,6 +170,7 @@ export class TravelView {
 
     const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
     if (this.phase !== 'dead') this.updatePlayer(dt, controllable);
+    if (this.phase !== 'dead') this.updateEscorts(dt, controllable);
     this.updateEnemies(dt);
     this.updateShots(dt);
     if (this.phase !== 'dead' && this.phase !== 'outro') this.collide();
@@ -411,6 +418,114 @@ export class TravelView {
       this.hud.banner('SHIP DESTROYED', 'Emergency beacon activated…', 'danger');
       this.setPhase('dead');
     }
+  }
+
+  // ---------------------------------------------------------------- escorts
+
+  escortColor(id) {
+    let n = 0;
+    for (let i = 0; i < id.length; i++) n += id.charCodeAt(i);
+    return ESCORT_COLORS[n % ESCORT_COLORS.length];
+  }
+
+  spawnHelper(inp) {
+    const color = this.escortColor(inp.id);
+    const ship = createEscortShip(color);
+    this.scene.add(ship.group);
+    const h = {
+      id: inp.id,
+      callsign: inp.callsign,
+      color,
+      x: this.player.x + (this.helpers.size % 2 ? 7 : -7),
+      y: this.player.y - 5,
+      hull: ESCORT_HULL,
+      maxHull: ESCORT_HULL,
+      cooldown: 0,
+      invuln: 1,
+      respawn: 0,
+      mx: 0,
+      my: 0,
+      fire: false,
+      mesh: ship.group,
+      flame: ship.flame,
+    };
+    this.helpers.set(inp.id, h);
+    return h;
+  }
+
+  removeHelper(h) {
+    this.scene.remove(h.mesh);
+    disposeModel(h.mesh);
+    this.helpers.delete(h.id);
+  }
+
+  updateEscorts(dt, controllable) {
+    const party = this.app.party;
+    if (!party?.ready) return;
+    const live = party.inputs();
+    const seen = new Set();
+    for (const inp of live) {
+      seen.add(inp.id);
+      let h = this.helpers.get(inp.id);
+      if (!h) h = this.spawnHelper(inp);
+      h.mx = inp.mx;
+      h.my = inp.my;
+      h.fire = inp.fire;
+    }
+    for (const [id, h] of [...this.helpers]) {
+      if (!seen.has(id)) this.removeHelper(h);
+    }
+    for (const h of this.helpers.values()) this.stepHelper(h, dt, controllable);
+  }
+
+  stepHelper(h, dt, controllable) {
+    h.invuln -= dt;
+    if (h.respawn > 0) {
+      h.respawn -= dt;
+      h.mesh.visible = false;
+      if (h.respawn <= 0) {
+        h.hull = h.maxHull;
+        h.invuln = 1.2;
+        h.x = clamp(this.player.x + (Math.random() < 0.5 ? -7 : 7), -this.playHalfW, this.playHalfW);
+        h.y = this.player.y - 4;
+      }
+      this.app.party?.setVitals(h.id, Math.max(0, h.hull), h.maxHull);
+      return;
+    }
+    let my = 0;
+    if (controllable) {
+      const mx = h.mx;
+      my = h.my;
+      const len = Math.hypot(mx, my) || 1;
+      h.x = clamp(h.x + (mx / len) * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
+      h.y = clamp(h.y + (my / len) * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
+    }
+    h.cooldown -= dt;
+    const firing = controllable && this.phase !== 'intro' && h.fire;
+    if (firing && h.cooldown <= 0) {
+      h.cooldown = 1 / ESCORT_RATE;
+      const dmg = WEAPONS.pulse.dmg * this.stats.dmgMult * ESCORT_DMG;
+      this.addShot({ kind: 'bolt', x: h.x, y: h.y + 2.2, vx: 0, vy: 115, dmg, r: 0.7, color: WEAPONS.pulse.color });
+    }
+    h.mesh.position.set(h.x, h.y, 0);
+    h.mesh.visible = h.invuln <= 0 || Math.floor(h.invuln * 20) % 2 === 0;
+    h.flame.scale.set(1, 0.7 + Math.random() * 0.5 + my * 0.4, 1);
+    if (Math.random() < 0.45) this.particles.emit(h.x, h.y - 2.2, 1, 0xff8833, { speed: 10, angle: -Math.PI / 2, spread: 0.6, life: 0.25 });
+    this.app.party?.setVitals(h.id, h.hull, h.maxHull);
+  }
+
+  hitEscort(h, dmg) {
+    if (h.invuln > 0 || h.respawn > 0 || this.phase === 'outro') return;
+    h.hull -= dmg;
+    h.invuln = 0.45;
+    this.particles.emit(h.x, h.y, 10, 0xff5533, { speed: 22, life: 0.4 });
+    this.audio.play('playerHit');
+    if (h.hull > 0) return;
+    h.hull = 0;
+    h.respawn = ESCORT_RESPAWN;
+    h.mesh.visible = false;
+    this.particles.explode(h.x, h.y, h.color, 2.4);
+    this.audio.play('explode');
   }
 
   // ---------------------------------------------------------------- enemies
@@ -756,6 +871,16 @@ export class TravelView {
       if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < rr * rr) {
         s.dead = true;
         this.hitPlayer(s.dmg);
+        continue;
+      }
+      for (const h of this.helpers.values()) {
+        if (h.respawn > 0) continue;
+        const er = ESCORT_R + s.r;
+        if ((h.x - s.x) ** 2 + (h.y - s.y) ** 2 < er * er) {
+          s.dead = true;
+          this.hitEscort(h, s.dmg);
+          break;
+        }
       }
     }
     for (const e of this.enemies) {
@@ -766,6 +891,18 @@ export class TravelView {
         this.hitPlayer(e.def.contact * this.dmgMult);
         if (e.type === 'kamikaze') this.killEnemy(e);
         else if (!wasInvuln) this.damageEnemy(e, e.type === 'boss' ? 0 : 40 * this.hpMult);
+        continue;
+      }
+      for (const h of this.helpers.values()) {
+        if (h.respawn > 0) continue;
+        const er = ESCORT_R + e.r * 0.8;
+        if ((h.x - e.x) ** 2 + (h.y - e.y) ** 2 < er * er) {
+          const wasInvuln = h.invuln > 0;
+          this.hitEscort(h, e.def.contact * this.dmgMult);
+          if (e.type === 'kamikaze') this.killEnemy(e);
+          else if (!wasInvuln && e.type !== 'boss') this.damageEnemy(e, 24 * this.hpMult);
+          break;
+        }
       }
     }
   }
@@ -839,11 +976,13 @@ export class TravelView {
     if (this.done) return;
     this.done = true;
     this.audio.beam(false);
+    this.app.party?.setMode('wait');
     this.onDone({ ...result, hull: this.player.hull, bounty: this.bounty, kills: this.kills, bossKilled: this.bossKilled, weapon: this.player.weapon });
   }
 
   dispose() {
     this.done = true;
+    this.app.party?.setMode('wait');
     this.input.captureKeys = false;
     this.audio.beam(false);
     this.hud.destroy();

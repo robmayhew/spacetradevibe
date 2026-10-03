@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <title>TXL Escort</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Rajdhani:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="controller-page">
+    <div id="pad">
+      <header>
+        <div class="eyebrow">TXL Trader</div>
+        <h1>Escort</h1>
+        <p class="status">Connecting…</p>
+        <div class="meter hull-meter hidden">
+          <label>HULL</label>
+          <div class="bar hull"><span></span></div>
+          <b class="hull-v"></b>
+        </div>
+      </header>
+      <form class="join-form hidden">
+        <label for="callsign">Callsign</label>
+        <input id="callsign" name="callsign" maxlength="16" autocomplete="nickname" value="ESCORT" />
+        <button class="btn primary" type="submit">Join</button>
+      </form>
+      <div class="controls hidden">
+        <div class="stick" id="stick"><div class="knob"></div></div>
+        <button type="button" class="fire" id="fire">FIRE</button>
+      </div>
+    </div>
+    <script type="module" src="/src/controller.js"></script>
+  </body>
+</html>

@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Game } from './game.js';
+import { PartyHost } from './party/host.js';
 
 class App {
   constructor() {
@@ -30,6 +31,8 @@ class App {
     this.input = new Input();
     this.audio = new Sfx();
     this.view = null;
+    this.party = new PartyHost(document.getElementById('party'));
+    this.party.start();
 
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('blur', () => this.view?.setPaused?.(true));
@@ -69,6 +72,7 @@ class App {
     this.last = now;
     this.view?.update(dt);
     this.game.tick(dt);
+    this.party?.tick(dt);
     this.composer.render(dt);
     this.input.endFrame();
     requestAnimationFrame(this.frame);
