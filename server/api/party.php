@@ -20,7 +20,7 @@ switch ($action) {
         party_rate($pdo, 200);
         json_out(party_create($pdo));
     case 'join':
-        party_rate($pdo, 400);
+        party_rate($pdo, 1000);
         json_out(party_join($pdo, $body));
     case 'input':
         json_out(party_input($pdo, $body));
@@ -145,14 +145,7 @@ function auth_room(array $room, string $token): array {
 }
 
 function next_color(array $escorts): int {
-    $used = [];
-    foreach ($escorts as $e) {
-        $used[(int) ($e['color'] ?? -1)] = true;
-    }
-    for ($i = 0; $i < 4; $i++) {
-        if (empty($used[$i])) return $i;
-    }
-    return 0;
+    return count($escorts) % 4;
 }
 
 function delete_live(PDO $pdo, string $room, ?string $peer = null): void {
@@ -194,7 +187,7 @@ function party_join(PDO $pdo, array $body): array {
         }
         $escorts = json_decode($row['escorts'] ?: '[]', true);
         if (!is_array($escorts)) $escorts = [];
-        if (count($escorts) >= 4) {
+        if (count($escorts) >= 24) {
             $pdo->rollBack();
             json_error(409, 'This crew is full.');
         }
@@ -275,7 +268,7 @@ function party_vitals(PDO $pdo, array $body): array {
     $hulls = $body['hulls'] ?? [];
     if (!is_array($hulls)) $hulls = [];
     $byPeer = [];
-    foreach (array_slice($hulls, 0, 4) as $row) {
+    foreach (array_slice($hulls, 0, 24) as $row) {
         if (!is_array($row)) continue;
         $peer = strtoupper(trim((string) ($row['peer'] ?? '')));
         if (!preg_match('/^[A-Z0-9]{8}$/', $peer)) continue;

@@ -19,9 +19,7 @@ function now() {
 }
 
 function nextColor(escorts) {
-  const used = new Set(escorts.map((e) => e.color));
-  for (let i = 0; i < 4; i++) if (!used.has(i)) return i;
-  return 0;
+  return escorts.length % 4;
 }
 
 function clampAxis(v) {
@@ -100,7 +98,7 @@ export function createPartyStore() {
           throw err;
         }
         const room = getRoom(c);
-        if (room.escorts.length >= 4) {
+        if (room.escorts.length >= 24) {
           const err = new Error('This crew is full.');
           err.status = 409;
           throw err;
@@ -158,7 +156,7 @@ export function createPartyStore() {
           throw err;
         }
         const mode = body.mode === 'travel' ? 'travel' : 'wait';
-        const hulls = Array.isArray(body.hulls) ? body.hulls.slice(0, 4) : [];
+        const hulls = Array.isArray(body.hulls) ? body.hulls.slice(0, 24) : [];
         const byPeer = new Map();
         for (const row of hulls) {
           const peer = String(row?.peer || '').toUpperCase();
