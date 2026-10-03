@@ -68,6 +68,7 @@ class App {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.view?.update(dt);
+    this.game.tick(dt);
     this.composer.render(dt);
     this.input.endFrame();
     requestAnimationFrame(this.frame);

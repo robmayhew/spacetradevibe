@@ -1,4 +1,4 @@
-export function renderMenu(root, { hasSave, muted, onNew, onContinue, onToggleMute }) {
+export function renderMenu(root, { hasSave, muted, onNew, onContinue, onToggleMute, onLeaderboard }) {
   root.innerHTML = `
     <div class="menu">
       <h1 class="logo">TXL<span>TRADER</span></h1>
@@ -11,6 +11,7 @@ export function renderMenu(root, { hasSave, muted, onNew, onContinue, onToggleMu
           <button class="btn danger" data-act="new-confirm">Overwrite</button>
           <button class="btn" data-act="new-cancel">Cancel</button>
         </div>
+        <button class="btn big" data-act="board">Leaderboard</button>
         <button class="btn ghost" data-act="mute">Sound: ${muted ? 'Off' : 'On'}</button>
       </div>
       <div class="howto panel">
@@ -37,6 +38,7 @@ export function renderMenu(root, { hasSave, muted, onNew, onContinue, onToggleMu
     if (act === 'new') hasSave ? confirm.classList.remove('hidden') : onNew();
     if (act === 'new-confirm') onNew();
     if (act === 'new-cancel') confirm.classList.add('hidden');
+    if (act === 'board') onLeaderboard();
     if (act === 'mute') e.target.textContent = `Sound: ${onToggleMute() ? 'Off' : 'On'}`;
   });
 }

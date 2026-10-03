@@ -61,6 +61,18 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .keys { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 15px; }
 .victory .logo span { letter-spacing: 0.3em; margin-right: -0.3em; color: var(--gold); text-shadow: 0 0 14px rgba(232, 199, 103, 0.8); }
 .stats-panel { padding: 16px 24px; min-width: 340px; }
+.board-panel { min-width: min(560px, 92vw); padding: 8px 16px 16px; }
+.board-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.board-body { min-height: 160px; max-height: 48vh; overflow-y: auto; }
+.board { width: 100%; border-collapse: collapse; font-size: 16px; }
+.board th, .board td { text-align: left; padding: 8px 10px; border-bottom: 1px dashed rgba(255, 255, 255, 0.06); }
+.board th { font-family: var(--display); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.board td:first-child, .board th:first-child { width: 2.2em; color: var(--muted); }
+.board td:nth-child(3), .board td:nth-child(4), .board th:nth-child(3), .board th:nth-child(4) { text-align: right; font-family: var(--display); font-size: 14px; }
+.submit-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+.submit-row input { flex: 1; min-width: 160px; font-family: var(--display); font-size: 14px; letter-spacing: 0.08em; color: var(--text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; }
+.submit-row input:focus { outline: none; border-color: var(--cyan); }
+.submit-status { margin: 8px 0 0; min-height: 1.3em; }
 
 /* Station */
 .station { position: absolute; inset: 0; display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: minmax(0, 1fr); }

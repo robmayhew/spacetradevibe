@@ -4,10 +4,20 @@ import { shuffle, pick, rand } from './rng.js';
 
 const SAVE_KEY = 'txl-trader-save-v1';
 
+function newRunId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export function newState(galaxy) {
   return {
     version: 1,
     seed: galaxy.seed,
+    runId: newRunId(),
+    runMs: 0,
     credits: 60,
     current: galaxy.start,
     visited: [galaxy.start],

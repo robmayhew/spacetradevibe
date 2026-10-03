@@ -1,2 +1,4 @@
 node_modules
 dist
+server/api/config.php
+.env
