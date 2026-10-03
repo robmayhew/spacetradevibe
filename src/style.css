@@ -215,10 +215,9 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
   .modal { min-width: 0; width: calc(100vw - 32px); }
 }
 .st-header, .tabs, .st-footer { position: relative; z-index: 2; }
-body.has-party .st-footer { padding-left: 176px; }
 body.has-party .menu { padding-bottom: 190px; }
-body.has-party.party-qr-hidden .st-footer { padding-left: 28px; }
-body.has-party.party-qr-hidden .menu { padding-bottom: 88px; }
+body.has-party.party-qr-hidden .menu { padding-bottom: 96px; }
+body.has-party:has(.station) .party-panel { bottom: 84px; }
 
 /* Docking HUD */
 .objective { margin-top: 6px; font-family: var(--body); font-size: 18px; color: var(--text); letter-spacing: 0.02em; }

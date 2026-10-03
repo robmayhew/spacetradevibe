@@ -215,9 +215,20 @@ export function partyDevPlugin() {
   return {
     name: 'party-dev-api',
     configureServer(server) {
-      const http = server.httpServer;
-      if (http) {
+      const handler = (req, res, next) => {
+        if (!isParty(req)) {
+          next?.();
+          return;
+        }
+        handleReq(req, res);
+      };
+      return () => {
+        server.middlewares.use(handler);
+        const http = server.httpServer;
+        if (!http || http.__txlParty) return;
         const others = http.listeners('request').slice();
+        if (!others.length) return;
+        http.__txlParty = true;
         http.removeAllListeners('request');
         http.on('request', (req, res) => {
           if (isParty(req)) {
@@ -226,12 +237,7 @@ export function partyDevPlugin() {
           }
           for (const fn of others) fn.call(http, req, res);
         });
-        return;
-      }
-      server.middlewares.use((req, res, next) => {
-        if (!isParty(req)) return next();
-        handleReq(req, res);
-      });
+      };
     },
   };
 }

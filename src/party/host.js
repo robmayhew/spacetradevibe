@@ -68,8 +68,13 @@ export class PartyHost {
       this.renderCrew();
       this.pollTimer = window.setInterval(() => this.poll(), 400);
       window.addEventListener('pagehide', this.leave);
-    } catch {
-      this.root.innerHTML = '';
+    } catch (err) {
+      console.warn('Party escorts offline:', err);
+      this.el.panel.classList.remove('hidden');
+      this.el.qr.classList.add('hidden');
+      this.el.show.classList.add('hidden');
+      this.el.code.textContent = '';
+      this.el.crew.innerHTML = `<li class="muted">${err.message || 'Escorts need npm run dev'}</li>`;
     }
   }
 
