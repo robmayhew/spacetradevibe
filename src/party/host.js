@@ -11,10 +11,12 @@ export class PartyHost {
     this.token = null;
     this.mode = 'wait';
     this.frame = null;
+    this.frameDirty = false;
     this.escorts = new Map();
     this.pollTimer = 0;
     this.sendAcc = 0;
     this.frameAcc = 0;
+    this.crewKey = '';
     this.mount();
   }
 
@@ -90,6 +92,11 @@ export class PartyHost {
       .map((e) => ({ id: e.id, callsign: e.callsign, color: e.color, mx: e.mx, my: e.my, fire: e.fire }));
   }
 
+  hasEscorts() {
+    for (const e of this.escorts.values()) if (e.connected) return true;
+    return false;
+  }
+
   setMode(mode) {
     if (this.mode === 'travel' && mode !== 'travel') {
       this.frame = null;
@@ -102,6 +109,7 @@ export class PartyHost {
 
   setFrame(frame) {
     this.frame = frame;
+    this.frameDirty = true;
   }
 
   setVitals(id, hull, maxHull) {
@@ -126,7 +134,8 @@ export class PartyHost {
     }
     if (this.frameAcc >= 0.1) {
       this.frameAcc = 0;
-      if (this.mode === 'travel' && this.frame) {
+      if (this.mode === 'travel' && this.frame && this.frameDirty && this.hasEscorts()) {
+        this.frameDirty = false;
         partyPost({ action: 'frame', room: this.room, token: this.token, frame: this.frame }).catch(() => {});
       }
     }
@@ -134,6 +143,9 @@ export class PartyHost {
 
   renderCrew() {
     const rows = [...this.escorts.values()].filter((e) => e.connected);
+    const key = rows.map((e) => `${e.id}:${e.callsign}`).join('|');
+    if (key === this.crewKey) return;
+    this.crewKey = key;
     this.el.crew.innerHTML = rows.map((e) => {
       const hex = escortHex(e.color);
       return `<li><span class="swatch" style="background:${hex};box-shadow:0 0 8px ${hex}"></span>${e.callsign}</li>`;

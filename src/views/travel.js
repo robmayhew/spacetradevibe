@@ -109,6 +109,10 @@ export class TravelView {
     this.auto = false;
     this.paused = false;
     this.done = false;
+    this.infinite = !!contract.infinite;
+    this.frameAcc = 0;
+    this.demoAcc = 0;
+    this.demoBossAcc = 0;
 
     const waveCount = isFinal ? 5 : contract.waves;
     this.hasBoss = contract.forceBoss ?? (isFinal || Math.random() < 0.15 + 0.035 * this.d);
@@ -169,7 +173,7 @@ export class TravelView {
     if (this.done) return;
     if (this.input.hit('Escape', 'KeyP')) this.setPaused(!this.paused);
     if (this.paused) {
-      this.app.party?.setFrame(this.combatFrame());
+      this.publishFrame(dt);
       return;
     }
 
@@ -177,7 +181,7 @@ export class TravelView {
     this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
     this.updatePhase(dt);
 
-    const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
+    const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro', 'infinite'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
     if (this.phase !== 'dead') this.updatePlayer(dt, controllable);
     if (this.phase !== 'dead') this.updateEscorts(dt, controllable);
     this.updateEnemies(dt);
@@ -197,7 +201,16 @@ export class TravelView {
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
     });
-    this.app.party?.setFrame(this.combatFrame());
+    this.publishFrame(dt);
+  }
+
+  publishFrame(dt) {
+    const party = this.app.party;
+    if (!party?.hasEscorts()) return;
+    this.frameAcc += dt;
+    if (this.frameAcc < 0.1) return;
+    this.frameAcc = 0;
+    party.setFrame(this.combatFrame());
   }
 
   combatFrame() {
@@ -255,6 +268,10 @@ export class TravelView {
   }
 
   waveText() {
+    if (this.infinite && this.phase !== 'intro' && this.phase !== 'outro' && this.phase !== 'dead') {
+      const n = this.enemies.filter((e) => this.isHostile(e)).length;
+      return `DEMO · ${n} HOSTILE${n === 1 ? '' : 'S'}`;
+    }
     if (this.phase === 'boss' || this.phase === 'bossWarn') {
       const escorts = this.enemies.filter((e) => this.isHostile(e) && e.type !== 'boss').length;
       return `CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
@@ -269,7 +286,13 @@ export class TravelView {
     switch (this.phase) {
       case 'intro':
         if (this.phaseT < 1.2) this.player.y = -62 + 30 * Math.sin((this.phaseT / 1.2) * (Math.PI / 2));
-        if (this.phaseT > 2.4) this.nextWave();
+        if (this.phaseT > 2.4) {
+          if (this.infinite) this.enterInfinite();
+          else this.nextWave();
+        }
+        break;
+      case 'infinite':
+        this.sustain(dt);
         break;
       case 'banner':
         if (this.phaseT > 1.6) {
@@ -304,6 +327,74 @@ export class TravelView {
         if (this.phaseT > 2.8) this.finish({ success: false, destroyed: true });
         break;
     }
+  }
+
+  beginInfinite(state) {
+    this.applyLoadout(state);
+    this.enterInfinite();
+  }
+
+  applyLoadout(state) {
+    this.d = 10;
+    this.hpMult = Math.pow(HP_GROWTH, this.d - 1);
+    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
+    this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
+    this.bulletSpeed = 1 + 0.04 * (this.d - 1);
+    this.fireRate = 1.1 + 0.06 * (this.d - 1);
+    const stats = shipStats(state);
+    this.stats = stats;
+    this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
+    if (!this.owned.includes(this.player.weapon)) this.player.weapon = this.owned[0] || 'pulse';
+    this.player.maxHull = stats.maxHull;
+    this.player.hull = stats.maxHull;
+    this.player.maxShield = stats.maxShield;
+    this.player.shield = stats.maxShield;
+    this.playerMesh.visible = true;
+    for (const slot of this.hud.el.slots) slot.classList.remove('locked');
+    const diff = this.app.hud.querySelector('.diff b');
+    if (diff) diff.textContent = '10';
+  }
+
+  enterInfinite() {
+    this.infinite = true;
+    this.hasBoss = false;
+    this.demoAcc = 0;
+    this.demoBossAcc = 0;
+    this.spawnQueue = [];
+    if (this.phase === 'dead' || this.player.hull <= 0) {
+      this.player.hull = this.player.maxHull;
+      this.player.shield = this.player.maxShield;
+      this.playerMesh.visible = true;
+    }
+    this.setPhase('infinite');
+    this.hud.banner('DEMO', 'Escorts can join · this run does not end');
+  }
+
+  sustain(dt) {
+    this.demoAcc += dt;
+    this.demoBossAcc += dt;
+    const living = this.enemies.filter((e) => !e.dead);
+    const hostiles = living.filter((e) => e.type !== 'asteroid' && e.type !== 'boss').length;
+    if (hostiles < 10 && living.length < 16 && this.demoAcc > 0.85) {
+      this.demoAcc = 0;
+      this.spawnDemoGroup(16 - living.length);
+    }
+    const bossAlive = living.some((e) => e.type === 'boss');
+    if (!bossAlive && living.length < 16 && this.demoBossAcc > 24) {
+      this.demoBossAcc = 0;
+      this.spawnEnemy('boss', 0, SPAWN_Y + 8);
+      this.hud.banner('WARNING', 'Hostile capital ship inbound', 'danger');
+      this.audio.play('bossWarn');
+    }
+  }
+
+  spawnDemoGroup(room) {
+    const types = Object.keys(ENEMIES).filter((id) => id !== 'boss' && id !== 'asteroid');
+    const type = pick(types);
+    const def = ENEMIES[type];
+    const n = Math.min(room, randInt(def.group[0], def.group[1]), 4);
+    const W = this.playHalfW;
+    for (let i = 0; i < n; i++) this.spawnEnemy(type, rand(-W * 0.9, W * 0.9), SPAWN_Y + i * 2);
   }
 
   nextWave() {
@@ -457,7 +548,7 @@ export class TravelView {
 
   hitPlayer(dmg) {
     const p = this.player;
-    if (p.invuln > 0 || this.phase === 'dead' || this.phase === 'outro' || this.app.cheats.god) return;
+    if (p.invuln > 0 || this.phase === 'dead' || this.phase === 'outro' || this.infinite || this.app.cheats.god) return;
     const absorbed = Math.min(p.shield, dmg);
     p.shield -= absorbed;
     const hullDmg = dmg - absorbed;

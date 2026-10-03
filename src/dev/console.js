@@ -249,6 +249,15 @@ function buildCommands(dc) {
       group: 'Ship & economy', help: 'Toggle invulnerability (combat hits and docking bumps).', cheat: true,
       run: () => `God mode ${(dc.app.cheats.god = !dc.app.cheats.god) ? 'ON' : 'off'}.`,
     },
+    demo: {
+      group: 'Flights',
+      help: 'Infinite combat for a live demo: max ship, captain cannot die, enemies never stop. Escorts can still join. Pause and retreat leave the demo.',
+      cheat: true,
+      run: () => {
+        g().startDemo();
+        return 'Demo running. Captain cannot die and enemies do not stop. Escorts join with the room code.';
+      },
+    },
 
     // ---- map
     goto: {

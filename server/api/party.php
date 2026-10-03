@@ -14,7 +14,6 @@ if (!is_array($body)) {
 
 $action = (string) ($body['action'] ?? '');
 $pdo = db();
-party_prune($pdo);
 
 switch ($action) {
     case 'create':
@@ -85,6 +84,7 @@ function party_rate(PDO $pdo, int $max): void {
 }
 
 function party_create(PDO $pdo): array {
+    party_prune($pdo);
     $hostPeer = party_peer_id();
     $token = party_token();
     for ($i = 0; $i < 8; $i++) {
@@ -176,6 +176,7 @@ function drop_silent_escorts(PDO $pdo, array $room): array {
 }
 
 function party_join(PDO $pdo, array $body): array {
+    party_prune($pdo);
     $code = room_code($body);
     $callsign = trim((string) ($body['callsign'] ?? ''));
     if ($callsign === '') $callsign = 'ESCORT';
@@ -233,7 +234,7 @@ function clamp_axis($v): float {
 function party_input(PDO $pdo, array $body): array {
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
-    $room = load_room($pdo, $code);
+    $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
     if ($who['role'] !== 'escort') json_error(403, 'Only an escort can send the pad.');
     $mx = clamp_axis($body['mx'] ?? 0);
@@ -245,13 +246,28 @@ function party_input(PDO $pdo, array $body): array {
         $pdo->prepare('INSERT INTO party_live (peer, room, mx, my, fire, updated_at) VALUES (?, ?, ?, ?, ?, NOW())')
             ->execute([$who['peer'], $code, $mx, $my, $fire]);
     }
-    return ['ok' => true];
+    $live = $pdo->prepare('SELECT hull, max_hull, mode FROM party_live WHERE peer = ? AND room = ?');
+    $live->execute([$who['peer'], $code]);
+    $row = $live->fetch() ?: [];
+    $out = [
+        'ok' => true,
+        'mode' => ($row['mode'] ?? 'wait') === 'travel' ? 'travel' : 'wait',
+        'hull' => isset($row['hull']) ? (float) $row['hull'] : 1,
+        'maxHull' => isset($row['max_hull']) ? (float) $row['max_hull'] : 1,
+        'color' => (int) ($who['color'] ?? 0),
+        'callsign' => $who['callsign'] ?? 'ESCORT',
+    ];
+    if (!empty($body['screen'])) {
+        $out['frame'] = party_read_frame($pdo, $code);
+        $out['peer'] = $who['peer'];
+    }
+    return $out;
 }
 
 function party_vitals(PDO $pdo, array $body): array {
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
-    $room = load_room($pdo, $code);
+    $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
     if ($who['role'] !== 'host') json_error(403, 'Only the host can send vitals.');
     $mode = (string) ($body['mode'] ?? 'wait');
@@ -285,7 +301,7 @@ function party_vitals(PDO $pdo, array $body): array {
 function party_poll(PDO $pdo, array $body): array {
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
-    $room = load_room($pdo, $code);
+    $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
     if ($who['role'] === 'host') {
         $room = drop_silent_escorts($pdo, $room);
@@ -359,7 +375,7 @@ function party_drop(PDO $pdo, array $body): array {
 function party_frame(PDO $pdo, array $body): array {
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
-    $room = load_room($pdo, $code);
+    $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
     if (array_key_exists('frame', $body)) {
         if ($who['role'] !== 'host') json_error(403, 'Only the host can send a frame.');
@@ -375,15 +391,16 @@ function party_frame(PDO $pdo, array $body): array {
         return ['ok' => true];
     }
     if ($who['role'] !== 'escort') json_error(403, 'Only an escort can read a frame.');
+    return ['ok' => true, 'frame' => party_read_frame($pdo, $code), 'peer' => $who['peer']];
+}
+
+function party_read_frame(PDO $pdo, string $code): ?array {
     $st = $pdo->prepare('SELECT frame FROM party_rooms WHERE code = ?');
     $st->execute([$code]);
     $raw = $st->fetchColumn();
-    $frame = null;
-    if (is_string($raw) && $raw !== '') {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) $frame = $decoded;
-    }
-    return ['ok' => true, 'frame' => $frame, 'peer' => $who['peer']];
+    if (!is_string($raw) || $raw === '') return null;
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : null;
 }
 
 function party_signal(PDO $pdo, array $body): array {

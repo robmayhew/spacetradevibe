@@ -36,9 +36,9 @@ const keys = new Set();
 let session;
 let pollTimer = 0;
 let inputTimer = 0;
-let frameTimer = 0;
 let arena = null;
 let useScreen = false;
+let inputBusy = false;
 
 function prefersScreen() {
   return window.matchMedia('(pointer: fine)').matches && window.innerWidth >= 900;
@@ -131,28 +131,53 @@ async function join(callsign) {
     startPad();
   }
   await sendInput();
-  pollTimer = window.setInterval(poll, 100);
-  inputTimer = window.setInterval(sendInput, useScreen ? 50 : 100);
-  if (useScreen) frameTimer = window.setInterval(pollFrame, 100);
+  if (useScreen) inputTimer = window.setInterval(sendInput, 85);
+  else {
+    pollTimer = window.setInterval(poll, 100);
+    inputTimer = window.setInterval(sendInput, 100);
+  }
   window.addEventListener('pagehide', leave);
 }
 
+function applyLink(data) {
+  if (typeof data.color === 'number') paintShip(data.color);
+  if (data.mode === 'travel') {
+    setHull(data.hull ?? 0, data.maxHull ?? 0);
+    if (data.frame) {
+      showArena(true);
+      arena?.applyFrame(data.frame, session.peer || data.peer);
+      setStatus(data.frame.wt || 'In combat · WASD move · Space fire');
+    } else {
+      setStatus('In combat · WASD move · Space fire');
+    }
+  } else {
+    setStatus('Linked · standing by');
+    hullMeter.classList.add('hidden');
+    showArena(false);
+  }
+}
+
 async function sendInput() {
-  if (!session) return;
+  if (!session || inputBusy) return;
   if (useScreen) applyPadFromKeys();
+  inputBusy = true;
   try {
-    await partyPost({
+    const data = await partyPost({
       action: 'input',
       room: session.room,
       token: session.token,
       mx: pad.mx,
       my: pad.my,
       fire: pad.fire ? 1 : 0,
+      screen: useScreen ? 1 : 0,
     });
+    if (useScreen) applyLink(data);
   } catch (err) {
     if (err.status === 404 || err.status === 403) {
       setStatus(err.message || 'Captain left. Scan the QR again.');
     }
+  } finally {
+    inputBusy = false;
   }
 }
 
@@ -173,22 +198,6 @@ async function poll() {
     if (err.status === 404 || err.status === 403) {
       setStatus(err.message || 'Captain left. Scan the QR again.');
     }
-  }
-}
-
-async function pollFrame() {
-  if (!session || !useScreen) return;
-  try {
-    const data = await partyPost({ action: 'frame', room: session.room, token: session.token });
-    if (data.frame) {
-      showArena(true);
-      arena?.applyFrame(data.frame, session.peer || data.peer);
-      if (data.frame.wt) setStatus(data.frame.wt);
-    } else {
-      showArena(false);
-    }
-  } catch {
-    /* keep the last frame if the poll blips */
   }
 }
 

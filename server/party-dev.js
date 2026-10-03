@@ -41,14 +41,12 @@ export function createPartyStore() {
   }
 
   function getRoom(c) {
-    prune();
     const room = rooms.get(c);
     if (!room) {
       const err = new Error('Room is gone.');
       err.status = 404;
       throw err;
     }
-    room.touched = now();
     return room;
   }
 
@@ -74,9 +72,9 @@ export function createPartyStore() {
 
   return {
     handle(body) {
-      prune();
       const action = body?.action;
       if (action === 'create') {
+        prune();
         let c;
         do c = code();
         while (rooms.has(c));
@@ -94,6 +92,7 @@ export function createPartyStore() {
         return { ok: true, room: c, peer: hostPeer, token: tok, role: 'host' };
       }
       if (action === 'join') {
+        prune();
         const c = String(body.room || '').toUpperCase();
         if (!/^[A-Z0-9]{5}$/.test(c)) {
           const err = new Error('Invalid room.');
@@ -128,14 +127,27 @@ export function createPartyStore() {
           throw err;
         }
         const prev = room.live.get(who.peer) || { hull: 1, maxHull: 1, mode: 'wait' };
-        room.live.set(who.peer, {
+        const live = {
           ...prev,
           mx: clampAxis(body.mx),
           my: clampAxis(body.my),
           fire: body.fire ? 1 : 0,
           updated: now(),
-        });
-        return { ok: true };
+        };
+        room.live.set(who.peer, live);
+        const out = {
+          ok: true,
+          mode: live.mode === 'travel' ? 'travel' : 'wait',
+          hull: live.hull ?? 1,
+          maxHull: live.maxHull ?? 1,
+          color: who.color ?? 0,
+          callsign: who.callsign ?? 'ESCORT',
+        };
+        if (body.screen) {
+          out.frame = room.frame || null;
+          out.peer = who.peer;
+        }
+        return out;
       }
       if (action === 'vitals') {
         const room = getRoom(String(body.room || '').toUpperCase());
@@ -220,6 +232,7 @@ export function createPartyStore() {
             throw err;
           }
           room.frame = body.frame;
+          room.touched = now();
           return { ok: true };
         }
         if (who.role !== 'escort') {

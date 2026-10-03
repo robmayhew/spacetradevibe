@@ -1,4 +1,5 @@
 import { generateGalaxy } from './galaxy.js';
+import { SYSTEMS, WEAPON_ORDER } from './data.js';
 import { newState, generateContracts, shipStats, towFee, save, load } from './state.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
@@ -122,6 +123,48 @@ export class Game {
     this.state = s;
     if (!s.contracts?.length) generateContracts(s, this.galaxy);
     this.showStation();
+  }
+
+  startDemo() {
+    if (!this.state) {
+      this.setGalaxy(Math.floor(Math.random() * 2 ** 31));
+      this.state = newState(this.galaxy);
+      generateContracts(this.state, this.galaxy);
+    }
+    const s = this.state;
+    for (const [key, def] of Object.entries(SYSTEMS)) s.upgrades[key] = def.max;
+    s.weapons = [...WEAPON_ORDER];
+    if (!s.weapons.includes(s.weapon)) s.weapon = 'pulse';
+    s.hull = shipStats(s).maxHull;
+    s.cheated = true;
+    save(s);
+    this.app.cheats.god = true;
+    if (this.travel) {
+      this.travel.beginInfinite(s);
+      return;
+    }
+    this.station?.destroy();
+    this.station = null;
+    if (this.dock) {
+      this.dock.dispose();
+      this.dock = null;
+    }
+    this.app.ui.innerHTML = '';
+    this.app.hud.innerHTML = '';
+    const here = this.galaxy.systems[s.current];
+    const destId = here.links.find((id) => !this.galaxy.systems[id].terminus) ?? here.links[0];
+    const contract = {
+      dest: destId,
+      difficulty: 10,
+      good: 'Demo Cargo',
+      pay: 1,
+      dist: 0,
+      waves: 1,
+      forceBoss: false,
+      infinite: true,
+    };
+    this.flight = { contract, from: here, to: this.galaxy.systems[destId], hull: s.hull, skipDock: true };
+    this.startTravel();
   }
 
   showStation(report) {

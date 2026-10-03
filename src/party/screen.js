@@ -27,7 +27,7 @@ function byId(list) {
 export class EscortArena {
   constructor(root) {
     this.root = root;
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(this.pixelRatio);
     root.append(this.renderer.domElement);
@@ -65,6 +65,7 @@ export class EscortArena {
     this.from = null;
     this.to = null;
     this.gotAt = 0;
+    this.span = 100;
     this.input = { mx: 0, my: 0 };
     this.seated = false;
     this.alive = true;
@@ -100,9 +101,11 @@ export class EscortArena {
 
   applyFrame(frame, ownId) {
     if (!frame) return;
+    const now = performance.now();
+    this.span = this.gotAt ? Math.min(250, Math.max(50, now - this.gotAt)) : 100;
     this.from = this.to || frame;
     this.to = frame;
-    this.gotAt = performance.now();
+    this.gotAt = now;
     this.ownId = ownId;
     this.speed = frame.s || this.speed;
     this.paused = !!frame.z;
@@ -130,7 +133,7 @@ export class EscortArena {
   update(dt) {
     const cur = this.to;
     if (!cur) return;
-    const u = this.paused ? 1 : Math.min(1, (performance.now() - this.gotAt) / 100);
+    const u = this.paused ? 1 : Math.min(1, (performance.now() - this.gotAt) / (this.span || 100));
     const playW = Math.min(this.halfW, MAX_PLAY_HALF_W) - 3;
     const cap = mixRow(this.from?.cap, cur.cap, u);
     this.captain.group.position.set(cap.x, cap.y, 0);
