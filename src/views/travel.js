@@ -365,6 +365,9 @@ export class TravelView {
     }
     const endY = target ? target.y - target.r * 0.6 : TOP + 5;
     const y0 = p.y + 3.5;
+    for (const h of this.eShots) {
+      if (!h.dead && h.homing && h.y > y0 - 1 && h.y < endY && Math.abs(h.x - p.x) < h.r + 0.8) this.shootDown(h);
+    }
     this.beamMesh.position.set(p.x, (y0 + endY) / 2, 0.2);
     this.beamMesh.scale.set(1 + Math.random() * 0.3, Math.max(0.1, endY - y0), 1);
     if (target) {
@@ -625,7 +628,7 @@ export class TravelView {
     const mesh = homing ? flatShape('seekerShot', SEEKER_SHOT, color) : new THREE.Mesh(circleGeo, basicMat(color));
     mesh.position.set(x, y, 0.1);
     this.scene.add(mesh);
-    this.eShots.push({ x, y, vx, vy, dmg, r: 0.7, mesh, color, homing, age: 0 });
+    this.eShots.push({ x, y, vx, vy, dmg, r: 0.7, mesh, color, homing, age: 0, locked: !!homing, turned: 0 });
   }
 
   damageEnemy(e, dmg, silent = false) {
@@ -659,6 +662,12 @@ export class TravelView {
       this.shake = Math.max(this.shake, e.r * 0.25);
       this.audio.play('explode');
     }
+  }
+
+  shootDown(h) {
+    h.dead = true;
+    this.particles.emit(h.x, h.y, 10, 0xffb060, { speed: 18, life: 0.35 });
+    this.audio.play('hit');
   }
 
   clearEnemyShots() {
@@ -705,22 +714,30 @@ export class TravelView {
           continue;
         }
         // Steer toward the player at a limited turn rate; dead pilots aren't tracked.
+        // Once a shot has turned a full circle in total, it loses its lock and flies straight.
         let a = Math.atan2(s.vy, s.vx);
-        if (this.phase !== 'dead') {
+        if (s.locked && this.phase !== 'dead') {
           const want = Math.atan2(p.y - s.y, p.x - s.x);
           const diff = Math.atan2(Math.sin(want - a), Math.cos(want - a));
-          a += clamp(diff, -s.homing * dt, s.homing * dt);
+          const turn = clamp(diff, -s.homing * dt, s.homing * dt);
+          a += turn;
+          s.turned += Math.abs(turn);
+          if (s.turned >= Math.PI * 2) {
+            s.locked = false;
+            s.mesh.material.color.multiplyScalar(0.45);
+            this.particles.emit(s.x, s.y, 4, s.color, { speed: 6, life: 0.3 });
+          }
         }
         const sp = Math.hypot(s.vx, s.vy);
         s.vx = Math.cos(a) * sp;
         s.vy = Math.sin(a) * sp;
         s.mesh.rotation.z = a - Math.PI / 2;
-        if (Math.random() < 0.6) this.particles.emit(s.x, s.y, 1, s.color, { speed: 3, life: 0.3 });
+        if (s.locked && Math.random() < 0.6) this.particles.emit(s.x, s.y, 1, s.color, { speed: 3, life: 0.3 });
       }
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
-      const m = s.homing ? 30 : 3; // homing shots may swing offscreen and curve back
+      const m = s.locked ? 30 : 3; // locked homing shots may swing offscreen and curve back
       if (s.y < BOTTOM - m || s.y > TOP + 12 + m || Math.abs(s.x) > this.halfW + m) s.dead = true;
     }
   }
@@ -750,6 +767,17 @@ export class TravelView {
           s.dead = true;
           this.damageEnemy(e, s.dmg);
           this.particles.emit(s.x, s.y, 3, s.color, { speed: 15, life: 0.25 });
+          break;
+        }
+      }
+      if (s.dead) continue;
+      // Homing shots are missiles and can be shot down; plain shots can't.
+      for (const h of this.eShots) {
+        if (h.dead || !h.homing) continue;
+        const rr = h.r + s.r;
+        if ((h.x - s.x) ** 2 + (h.y - s.y) ** 2 < rr * rr) {
+          s.dead = true;
+          this.shootDown(h);
           break;
         }
       }

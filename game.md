@@ -183,7 +183,10 @@ For comparison, the starting ship moves at 40. Base damage is high everywhere: o
 | Gunship | 180 | 30 ×5 spread | 38 | 75 | Slow and tough. Strafes and fires a 5-shot spread |
 | Sniper | 70 | 39 ×3 burst | 85 | 45 | Hangs back, repositions and fires fast 3-shot bursts |
 
-**Homing shots:** scouts and fighters, the single-shot enemies, fire tracking rounds. They steer toward you at 3.5 radians per second, leave a trail, and burn out after 4 seconds. Simply running sideways won't shake them (about 99% hit). Dodging hard just before impact, so they overshoot, works roughly 3 times in 10. Bursts, spreads and boss patterns still fly straight.
+**Homing shots:** scouts and fighters, the single-shot enemies, fire tracking missiles. They steer toward you at 3.5 radians per second, leave a trail, and burn out after 4 seconds. Simply running sideways won't shake them (about 99% hit), and dodging hard just before impact works roughly 3 times in 10. Two counters:
+
+- **Shoot them down.** Any of your shots destroys a homing missile it touches (the shot is used up), and the Ion Beam burns through any in its path. Plain shots (bursts, spreads, boss patterns) can't be shot.
+- **Make them turn a full circle.** Once a missile has turned 360° in total, it loses its lock, dims, stops trailing and flies straight. Circling tightly makes it chase its own tail.
 
 Each wave has a spawn budget of 6 + 1.9×d + 2.5×(wave number, starting at 0), and **every wave has at least 6 hostile ships**. If the budget would buy fewer, extra groups are added; asteroids don't count toward the 6. Waves are a mix of all the enemy types at every difficulty: types are dealt from a shuffled deck across the flight, so you meet every type before any repeats. Enemies arrive in groups: lines, columns, V formations or scattered.
 
