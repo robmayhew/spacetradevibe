@@ -12,6 +12,7 @@ import {
   ensureCallsign,
   formatRunTime,
   hasRunClock,
+  loadCallsign,
   MIN_TIME_MS,
   runScore,
   saveCallsign,
@@ -33,6 +34,7 @@ export class Game {
     this.travel = null;
     this.screen = 'menu';
     this.windowFocused = document.hasFocus();
+    this.boardAcc = 0;
     window.addEventListener('blur', () => {
       this.windowFocused = false;
     });
@@ -51,6 +53,11 @@ export class Game {
     if (!this.windowFocused || document.hidden) return;
     if (this.app.view?.paused) return;
     s.runMs += dt * 1000;
+    this.boardAcc += dt;
+    if (this.boardAcc >= 60) {
+      this.boardAcc = 0;
+      this.pushLiveScore();
+    }
   }
 
   flushClock() {
@@ -122,6 +129,7 @@ export class Game {
     this.station?.destroy();
     this.app.hud.innerHTML = '';
     this.station = new StationScreen(this, { report });
+    this.pushLiveScore();
   }
 
   // A flight is three scenes: undock at the origin, the travel waves, then dock at
@@ -332,6 +340,7 @@ export class Game {
         deaths: s.stats.deaths,
         deliveries: s.stats.deliveries,
         seed: s.seed,
+        status: 'done',
       });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
@@ -343,6 +352,27 @@ export class Game {
           : 'The board is offline. Host the PHP API on this domain to post scores.';
       status.className = 'submit-status warn small';
     }
+  }
+
+  pushLiveScore() {
+    const s = this.state;
+    if (!hasRunClock(s) || s.won) return;
+    const callsign = loadCallsign().trim() || ensureCallsign();
+    if (!CALLSIGN_RE.test(callsign)) return;
+    const score = runScore(s.stats);
+    submitRun({
+      run_id: s.runId,
+      callsign,
+      score: score.total,
+      time_ms: Math.round(s.runMs),
+      earned: s.stats.earned,
+      kills: s.stats.kills,
+      bosses: s.stats.bosses,
+      deaths: s.stats.deaths,
+      deliveries: s.stats.deliveries,
+      seed: s.seed,
+      status: 'live',
+    }).catch(() => {});
   }
 }
 

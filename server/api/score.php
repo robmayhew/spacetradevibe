@@ -3,7 +3,7 @@
 require __DIR__ . '/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    json_error(405, 'POST a finished run.');
+    json_error(405, 'POST a run.');
 }
 
 $raw = file_get_contents('php://input');
@@ -38,8 +38,9 @@ if ($score < -10000000 || $score >= 50000000) {
     json_error(400, 'Invalid score.');
 }
 
+$status = (($body['status'] ?? 'done') === 'live') ? 'live' : 'done';
 $timeMs = $int('time_ms', 7 * 24 * 60 * 60 * 1000);
-if ($timeMs < 3 * 60 * 1000) {
+if ($status === 'done' && $timeMs < 3 * 60 * 1000) {
     json_error(400, 'Runs under 3 minutes are not posted.');
 }
 
@@ -56,18 +57,37 @@ if ($score !== $expected) {
 }
 
 $pdo = db();
-$ip = client_ip();
-$pdo->prepare('DELETE FROM rate_hits WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)')->execute();
-$hit = $pdo->prepare('SELECT COUNT(*) FROM rate_hits WHERE ip = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)');
-$hit->execute([$ip]);
-if ((int) $hit->fetchColumn() >= 10) {
-    json_error(429, 'Too many posts from this address. Try again later.');
+$st = $pdo->prepare('SELECT status, score, time_ms, UNIX_TIMESTAMP(updated_at) AS updated_unix FROM runs WHERE run_id = ?');
+$st->execute([$runId]);
+$prev = $st->fetch() ?: null;
+
+if ($prev && ($prev['status'] ?? '') === 'done' && $status === 'live') {
+    json_error(409, 'This run has already arrived.');
 }
-$pdo->prepare('INSERT INTO rate_hits (ip) VALUES (?)')->execute([$ip]);
+
+$existingLive = $prev && ($prev['status'] ?? '') === 'live';
+if ($status === 'live' && $existingLive) {
+    $updated = (int) ($prev['updated_unix'] ?? 0);
+    if ($updated && (time() - $updated) < 30) {
+        json_out(run_ranks($pdo, (int) $prev['score'], (int) $prev['time_ms']));
+    }
+}
+
+$needRate = $status === 'done' || !$prev;
+if ($needRate) {
+    $ip = client_ip();
+    $pdo->prepare('DELETE FROM rate_hits WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)')->execute();
+    $hit = $pdo->prepare('SELECT COUNT(*) FROM rate_hits WHERE ip = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)');
+    $hit->execute([$ip]);
+    if ((int) $hit->fetchColumn() >= 10) {
+        json_error(429, 'Too many posts from this address. Try again later.');
+    }
+    $pdo->prepare('INSERT INTO rate_hits (ip) VALUES (?)')->execute([$ip]);
+}
 
 $pdo->prepare(
-    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        callsign = VALUES(callsign),
        score = VALUES(score),
@@ -78,16 +98,24 @@ $pdo->prepare(
        deaths = VALUES(deaths),
        deliveries = VALUES(deliveries),
        seed = VALUES(seed),
+       status = IF(status = \'done\', \'done\', VALUES(status)),
        updated_at = NOW()'
-)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed]);
+)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed, $status]);
 
-$rankScore = $pdo->prepare('SELECT COUNT(*) FROM runs WHERE score > ? OR (score = ? AND time_ms < ?)');
-$rankScore->execute([$score, $score, $timeMs]);
-$rankTime = $pdo->prepare('SELECT COUNT(*) FROM runs WHERE time_ms < ? OR (time_ms = ? AND score > ?)');
-$rankTime->execute([$timeMs, $timeMs, $score]);
+json_out(run_ranks($pdo, $score, $timeMs));
 
-json_out([
-    'ok' => true,
-    'rank_score' => (int) $rankScore->fetchColumn() + 1,
-    'rank_time' => (int) $rankTime->fetchColumn() + 1,
-]);
+function run_ranks(PDO $pdo, int $score, int $timeMs): array {
+    $rankScore = $pdo->prepare(
+        'SELECT COUNT(*) FROM runs
+         WHERE (status = \'done\' OR (status = \'live\' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
+           AND (score > ? OR (score = ? AND time_ms < ?))'
+    );
+    $rankScore->execute([$score, $score, $timeMs]);
+    $rankTime = $pdo->prepare('SELECT COUNT(*) FROM runs WHERE status = \'done\' AND (time_ms < ? OR (time_ms = ? AND score > ?))');
+    $rankTime->execute([$timeMs, $timeMs, $score]);
+    return [
+        'ok' => true,
+        'rank_score' => (int) $rankScore->fetchColumn() + 1,
+        'rank_time' => (int) $rankTime->fetchColumn() + 1,
+    ];
+}

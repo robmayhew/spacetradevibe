@@ -12,6 +12,7 @@
     />
   </head>
   <body class="controller-page">
+    <div id="arena" class="hidden"></div>
     <div id="pad">
       <header>
         <div class="eyebrow">TXL Trader</div>
@@ -23,6 +24,7 @@
           <div class="bar hull"><span></span></div>
           <b class="hull-v"></b>
         </div>
+        <p class="keys-hint hidden muted small">WASD / arrows move · Space fire</p>
       </header>
       <form class="join-form hidden">
         <div class="room-fields hidden">
@@ -31,6 +33,10 @@
         </div>
         <label for="callsign">Callsign</label>
         <input id="callsign" name="callsign" maxlength="16" autocomplete="nickname" />
+        <label class="stick-opt">
+          <input type="checkbox" id="stick-only" />
+          Use the on-screen stick
+        </label>
         <button class="btn primary" type="submit">Join</button>
       </form>
       <div class="controls hidden">

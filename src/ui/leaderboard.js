@@ -6,7 +6,7 @@ export function renderLeaderboard(root, { onBack }) {
   root.innerHTML = `
     <div class="menu">
       <h1 class="logo">LANE<span>RECORDS</span></h1>
-      <p class="tagline">First delivery to the Terminus. Ranked by score and by time.</p>
+      <p class="tagline">Open runs stay on the board until they arrive at the Terminus. Ranked by score and by time.</p>
       <div class="panel board-panel">
         <div class="board-tabs">
           <button class="tab active" data-sort="score">Score</button>
@@ -21,14 +21,19 @@ export function renderLeaderboard(root, { onBack }) {
 
   let sort = 'score';
   const body = root.querySelector('.board-body');
+  let first = true;
 
   const load = async () => {
-    body.innerHTML = '<p class="muted center">Loading the lanes…</p>';
+    if (first) body.innerHTML = '<p class="muted center">Loading the lanes…</p>';
     try {
       const data = await fetchBoard(sort);
       const rows = data.rows || [];
+      first = false;
       if (!rows.length) {
-        body.innerHTML = '<p class="muted center">No Terminus runs posted yet.</p>';
+        body.innerHTML =
+          sort === 'time'
+            ? '<p class="muted center">No finished Terminus runs posted yet.</p>'
+            : '<p class="muted center">No runs on the board yet.</p>';
         return;
       }
       body.innerHTML = `<table class="board">
@@ -37,7 +42,7 @@ export function renderLeaderboard(root, { onBack }) {
           .map(
             (r, i) => `<tr>
               <td>${r.rank ?? i + 1}</td>
-              <td>${escapeHtml(r.callsign)}</td>
+              <td>${escapeHtml(r.callsign)} <span class="${r.status === 'live' ? 'board-live' : 'board-done'}">${r.status === 'live' ? 'In flight' : 'Arrived'}</span></td>
               <td>${fmt(r.score)}</td>
               <td>${formatRunTime(r.time_ms)}</td>
             </tr>`,
@@ -45,16 +50,24 @@ export function renderLeaderboard(root, { onBack }) {
           .join('')}</tbody>
       </table>`;
     } catch {
-      body.innerHTML = '<p class="muted center">The board is offline. Host the PHP API on this domain to post and view scores.</p>';
+      first = false;
+      body.innerHTML = '<p class="muted center">The board is offline. Host the PHP API on this domain to post scores.</p>';
     }
   };
 
+  const timer = window.setInterval(load, 20000);
+
   root.querySelector('.menu').addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'back') onBack();
+    if (act === 'back') {
+      window.clearInterval(timer);
+      onBack();
+      return;
+    }
     const tab = e.target.closest('[data-sort]');
     if (tab) {
       sort = tab.dataset.sort;
+      first = true;
       root.querySelectorAll('.board-tabs .tab').forEach((t) => t.classList.toggle('active', t === tab));
       load();
     }

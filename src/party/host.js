@@ -10,9 +10,11 @@ export class PartyHost {
     this.peer = null;
     this.token = null;
     this.mode = 'wait';
+    this.frame = null;
     this.escorts = new Map();
     this.pollTimer = 0;
     this.sendAcc = 0;
+    this.frameAcc = 0;
     this.mount();
   }
 
@@ -23,7 +25,7 @@ export class PartyHost {
         <img class="party-qr" alt="Join QR" title="Hide QR" />
         <button type="button" class="party-show hidden">QR code</button>
         <div class="party-code"></div>
-        <p class="muted small party-hint">Scan to fly a helper ship</p>
+        <p class="muted small party-hint">Scan or enter the code on a phone or laptop</p>
         <ul class="party-crew"></ul>
       </div>`;
     this.el = {
@@ -89,7 +91,17 @@ export class PartyHost {
   }
 
   setMode(mode) {
+    if (this.mode === 'travel' && mode !== 'travel') {
+      this.frame = null;
+      if (this.ready) {
+        partyPost({ action: 'frame', room: this.room, token: this.token, frame: null }).catch(() => {});
+      }
+    }
     this.mode = mode;
+  }
+
+  setFrame(frame) {
+    this.frame = frame;
   }
 
   setVitals(id, hull, maxHull) {
@@ -102,14 +114,22 @@ export class PartyHost {
   tick(dt) {
     if (!this.ready) return;
     this.sendAcc += dt;
-    if (this.sendAcc < 0.2) return;
-    this.sendAcc = 0;
-    const hulls = [...this.escorts.values()].map((e) => ({
-      peer: e.id,
-      hull: e.hull ?? 1,
-      maxHull: e.maxHull ?? 1,
-    }));
-    partyPost({ action: 'vitals', room: this.room, token: this.token, mode: this.mode, hulls }).catch(() => {});
+    this.frameAcc += dt;
+    if (this.sendAcc >= 0.2) {
+      this.sendAcc = 0;
+      const hulls = [...this.escorts.values()].map((e) => ({
+        peer: e.id,
+        hull: e.hull ?? 1,
+        maxHull: e.maxHull ?? 1,
+      }));
+      partyPost({ action: 'vitals', room: this.room, token: this.token, mode: this.mode, hulls }).catch(() => {});
+    }
+    if (this.frameAcc >= 0.1) {
+      this.frameAcc = 0;
+      if (this.mode === 'travel' && this.frame) {
+        partyPost({ action: 'frame', room: this.room, token: this.token, frame: this.frame }).catch(() => {});
+      }
+    }
   }
 
   renderCrew() {
@@ -117,7 +137,7 @@ export class PartyHost {
     this.el.crew.innerHTML = rows.map((e) => {
       const hex = escortHex(e.color);
       return `<li><span class="swatch" style="background:${hex};box-shadow:0 0 8px ${hex}"></span>${e.callsign}</li>`;
-    }).join('') || '<li class="muted">Waiting for phones</li>';
+    }).join('') || '<li class="muted">Waiting for crew</li>';
   }
 
   async poll() {

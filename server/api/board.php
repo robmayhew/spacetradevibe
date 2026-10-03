@@ -3,17 +3,22 @@
 require __DIR__ . '/db.php';
 
 $sort = $_GET['sort'] ?? 'score';
-$order = $sort === 'time'
-    ? 'time_ms ASC, score DESC'
-    : 'score DESC, time_ms ASC';
+if ($sort === 'time') {
+    $order = 'time_ms ASC, score DESC';
+    $where = "status = 'done'";
+} else {
+    $order = 'score DESC, time_ms ASC';
+    $where = "status = 'done' OR (status = 'live' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE))";
+}
 
-$st = db()->query("SELECT callsign, score, time_ms FROM runs ORDER BY $order LIMIT 20");
+$st = db()->query("SELECT callsign, score, time_ms, status FROM runs WHERE $where ORDER BY $order LIMIT 20");
 $rows = [];
 $rank = 1;
 foreach ($st as $row) {
     $row['rank'] = $rank++;
     $row['score'] = (int) $row['score'];
     $row['time_ms'] = (int) $row['time_ms'];
+    $row['status'] = ($row['status'] ?? '') === 'live' ? 'live' : 'done';
     $rows[] = $row;
 }
 

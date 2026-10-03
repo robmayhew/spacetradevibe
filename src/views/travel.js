@@ -95,6 +95,7 @@ export class TravelView {
     };
     this.buildPlayerMesh();
     this.helpers = new Map();
+    this.nextSid = 1;
     this.app.party?.setMode('travel');
 
     this.enemies = [];
@@ -167,7 +168,10 @@ export class TravelView {
   update(dt) {
     if (this.done) return;
     if (this.input.hit('Escape', 'KeyP')) this.setPaused(!this.paused);
-    if (this.paused) return;
+    if (this.paused) {
+      this.app.party?.setFrame(this.combatFrame());
+      return;
+    }
 
     this.phaseT += dt;
     this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
@@ -193,6 +197,61 @@ export class TravelView {
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
     });
+    this.app.party?.setFrame(this.combatFrame());
+  }
+
+  combatFrame() {
+    const packShot = (s, k) => ({
+      i: s.sid,
+      k,
+      x: +s.x.toFixed(2),
+      y: +s.y.toFixed(2),
+      vx: +s.vx.toFixed(2),
+      vy: +s.vy.toFixed(2),
+      c: s.color,
+      r: s.r,
+      h: s.homing ? 1 : 0,
+    });
+    const escorts = [...this.helpers.values()].map((h) => ({
+      i: h.id,
+      c: ESCORT_COLORS.indexOf(h.color) >= 0 ? ESCORT_COLORS.indexOf(h.color) : 0,
+      x: +h.x.toFixed(2),
+      y: +h.y.toFixed(2),
+      h: Math.max(0, h.hull),
+      m: h.maxHull,
+      r: Math.max(0, h.respawn),
+    }));
+    const enemies = this.enemies.filter((e) => !e.dead).map((e) => ({
+      i: e.sid,
+      t: e.type,
+      x: +e.x.toFixed(2),
+      y: +e.y.toFixed(2),
+      sc: +(e.mesh?.scale?.x || 1).toFixed(2),
+      hp: Math.max(0, e.hp),
+    }));
+    const shots = [
+      ...this.pShots.filter((s) => !s.dead).map((s) => packShot(s, 0)),
+      ...this.eShots.filter((s) => !s.dead).map((s) => packShot(s, 1)),
+    ];
+    if (shots.length > 80) shots.splice(0, shots.length - 80);
+    const p = this.player;
+    const beam = this.beamMesh?.visible
+      ? { x: +this.beamMesh.position.x.toFixed(2), y: +this.beamMesh.position.y.toFixed(2), h: +this.beamMesh.scale.y.toFixed(2) }
+      : null;
+    const frame = {
+      p: this.phase,
+      z: this.paused ? 1 : 0,
+      w: +(this.halfW || 50).toFixed(2),
+      s: this.stats.speed,
+      wt: this.waveText(),
+      cap: { x: +p.x.toFixed(2), y: +p.y.toFixed(2), h: p.hull, m: p.maxHull, sh: p.shield, sm: p.maxShield },
+      es: escorts,
+      en: enemies,
+      sh: shots,
+      b: beam,
+    };
+    while (JSON.stringify(frame).length > 24000 && frame.sh.length) frame.sh.pop();
+    return frame;
   }
 
   waveText() {
@@ -392,6 +451,7 @@ export class TravelView {
     this.scene.add(mesh);
     s.mesh = mesh;
     s.age = 0;
+    s.sid = this.nextSid++;
     this.pShots.push(s);
   }
 
@@ -563,6 +623,7 @@ export class TravelView {
       e.shotT = 0;
       e.spiralA = 0;
     }
+    e.sid = this.nextSid++;
     this.enemies.push(e);
     return e;
   }
@@ -737,7 +798,7 @@ export class TravelView {
     const mesh = homing ? flatShape('seekerShot', SEEKER_SHOT, color) : new THREE.Mesh(circleGeo, basicMat(color));
     mesh.position.set(x, y, 0.1);
     this.scene.add(mesh);
-    this.eShots.push({ x, y, vx, vy, dmg, r: 0.7, mesh, color, homing, age: 0, locked: !!homing, turned: 0 });
+    this.eShots.push({ sid: this.nextSid++, x, y, vx, vy, dmg, r: 0.7, mesh, color, homing, age: 0, locked: !!homing, turned: 0 });
   }
 
   damageEnemy(e, dmg, silent = false) {

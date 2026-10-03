@@ -88,6 +88,7 @@ export function createPartyStore() {
           hostPeer,
           escorts: [],
           live: new Map(),
+          frame: null,
           touched: now(),
         });
         return { ok: true, room: c, peer: hostPeer, token: tok, role: 'host' };
@@ -199,6 +200,35 @@ export function createPartyStore() {
           callsign: who.callsign ?? 'ESCORT',
         };
       }
+      if (action === 'frame') {
+        const room = getRoom(String(body.room || '').toUpperCase());
+        const who = auth(room, String(body.token || ''));
+        if (Object.prototype.hasOwnProperty.call(body, 'frame')) {
+          if (who.role !== 'host') {
+            const err = new Error('Only the host can send a frame.');
+            err.status = 403;
+            throw err;
+          }
+          if (body.frame == null) {
+            room.frame = null;
+            return { ok: true };
+          }
+          const json = JSON.stringify(body.frame);
+          if (!json || json.length > 24576) {
+            const err = new Error('Frame is too large.');
+            err.status = 400;
+            throw err;
+          }
+          room.frame = body.frame;
+          return { ok: true };
+        }
+        if (who.role !== 'escort') {
+          const err = new Error('Only an escort can read a frame.');
+          err.status = 403;
+          throw err;
+        }
+        return { ok: true, frame: room.frame || null, peer: who.peer };
+      }
       if (action === 'leave') {
         const c = String(body.room || '').toUpperCase();
         const room = getRoom(c);
@@ -284,6 +314,7 @@ function readBody(req) {
 
 export function createBoardStore() {
   const runs = new Map();
+  const liveWrite = new Map();
 
   function intField(body, key, max) {
     if (!(key in body) || !Number.isFinite(Number(body[key]))) {
@@ -300,9 +331,24 @@ export function createBoardStore() {
     return n;
   }
 
+  function ranks(score, timeMs, rows) {
+    const rankScore = rows.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
+    const finished = rows.filter((r) => r.status === 'done');
+    const rankTime = finished.filter((r) => r.time_ms < timeMs || (r.time_ms === timeMs && r.score > score)).length + 1;
+    return { rank_score: rankScore, rank_time: rankTime };
+  }
+
+  function visible(sort) {
+    const stale = now() - 15 * 60 * 1000;
+    return [...runs.values()].filter((r) => {
+      if (r.status === 'live') return sort !== 'time' && r.updated >= stale;
+      return true;
+    });
+  }
+
   return {
     board(sort) {
-      const rows = [...runs.values()].sort((a, b) =>
+      const rows = visible(sort).sort((a, b) =>
         sort === 'time'
           ? a.time_ms - b.time_ms || b.score - a.score
           : b.score - a.score || a.time_ms - b.time_ms,
@@ -312,6 +358,7 @@ export function createBoardStore() {
           callsign: r.callsign,
           score: r.score,
           time_ms: r.time_ms,
+          status: r.status === 'live' ? 'live' : 'done',
           rank: i + 1,
         })),
       };
@@ -335,8 +382,9 @@ export function createBoardStore() {
         err.status = 400;
         throw err;
       }
+      const status = body.status === 'live' ? 'live' : 'done';
       const timeMs = intField(body, 'time_ms', 7 * 24 * 60 * 60 * 1000);
-      if (timeMs < 3 * 60 * 1000) {
+      if (status === 'done' && timeMs < 3 * 60 * 1000) {
         const err = new Error('Runs under 3 minutes are not posted.');
         err.status = 400;
         throw err;
@@ -353,12 +401,35 @@ export function createBoardStore() {
         err.status = 400;
         throw err;
       }
-      const row = { run_id: runId, callsign, score, time_ms: timeMs, earned, kills, bosses, deaths, deliveries, seed };
+      const prev = runs.get(runId);
+      if (prev?.status === 'done' && status === 'live') {
+        const err = new Error('This run has already arrived.');
+        err.status = 409;
+        throw err;
+      }
+      if (status === 'live' && prev) {
+        const last = liveWrite.get(runId) || 0;
+        if (now() - last < 30000) {
+          return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()]) };
+        }
+      }
+      const row = {
+        run_id: runId,
+        callsign,
+        score,
+        time_ms: timeMs,
+        earned,
+        kills,
+        bosses,
+        deaths,
+        deliveries,
+        seed,
+        status: prev?.status === 'done' ? 'done' : status,
+        updated: now(),
+      };
       runs.set(runId, row);
-      const all = [...runs.values()];
-      const rankScore = all.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
-      const rankTime = all.filter((r) => r.time_ms < timeMs || (r.time_ms === timeMs && r.score > score)).length + 1;
-      return { ok: true, rank_score: rankScore, rank_time: rankTime };
+      if (status === 'live') liveWrite.set(runId, now());
+      return { ok: true, ...ranks(score, timeMs, [...runs.values()]) };
     },
   };
 }

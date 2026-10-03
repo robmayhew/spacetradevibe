@@ -10,7 +10,7 @@ export function renderMenu(root, { hasSave, muted, callsign, onNew, onContinue, 
           Callsign
           <input type="text" maxlength="16" spellcheck="false" autocomplete="nickname" data-callsign value="${escapeAttr(callsign || '')}">
         </label>
-        <p class="callsign-hint muted small">Posted Terminus runs use this name. Edit it anytime.</p>
+        <p class="callsign-hint muted small">Lane Records uses this name while you fly and when you arrive.</p>
         ${hasSave ? '<button class="btn primary big" data-act="continue">Continue</button>' : ''}
         <button class="btn ${hasSave ? '' : 'primary'} big" data-act="new">New Game</button>
         <div class="confirm hidden">

@@ -30,17 +30,21 @@ Progress auto-saves to `localStorage` each time you dock.
 
 ## Leaderboard on Plesk
 
-The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run is posted once, the first time cargo is delivered to the Terminus.
+The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run is posted while the captain is still flying (`status: live`, shown as **In flight**) and again when they submit after delivering to the Terminus (`status: done`, **Arrived**). The Score tab includes open runs. The Time tab is finished runs only. In-flight rows drop off if they are not updated for 15 minutes.
 
 1. In Plesk, create a MariaDB database and user, then run [`server/schema.sql`](server/schema.sql).
 2. Copy [`server/api/config.example.php`](server/api/config.example.php) to `server/api/config.php` on the server and fill in those credentials. Keep `config.php` out of git.
 3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/`.
 4. Confirm PHP 8.1 or newer is selected for the domain (the Plesk default on current installs).
+5. If this database already existed, also run the `ALTER TABLE` statements at the bottom of [`server/schema.sql`](server/schema.sql) (`runs.status` and `party_rooms.frame`).
 
-No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host. Phone escorts use an in-memory party API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
+No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host. Escorts use an in-memory party API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
 
-## Phone escorts
+## Escorts
 
-The bottom-left QR opens a phone controller. Linked phones fly helper ships in combat (pulse laser at 20% of the captain's bolt damage). They do not replace the captain: an escort exploding does not end the flight or count as a death.
+The bottom-left QR (or the 5-character code) opens the escort page. Linked devices fly helper ships in combat (pulse laser at 20% of the captain's bolt damage). They do not replace the captain: an escort exploding does not end the flight or count as a death.
 
-After pulling this change on Plesk, run the `party_live` statement in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php), and upload a fresh `dist/` that includes `controller.html`. Stick and fire go through `/api`, so a phone can join from cellular or another network. Each escort gets a distinct ship color.
+- **Phone:** virtual stick and fire button.
+- **Laptop:** the combat arena on that screen, **WASD / arrows** to move, **Space** to fire. Check **Use the on-screen stick** to join as a pad instead. The other machine must open the same origin (the deployed site, or the dev server via the host's LAN address). `localhost` on the captain's machine is not reachable from another laptop.
+
+After pulling this change on Plesk, run the `ALTER TABLE` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php) and [`server/api/score.php`](server/api/score.php) / [`server/api/board.php`](server/api/board.php), and upload a fresh `dist/` that includes `controller.html`. Stick, fire, and combat frames go through `/api`. Each escort gets a distinct ship color.
