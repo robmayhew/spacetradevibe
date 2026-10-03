@@ -105,7 +105,7 @@ Each system is a lively environment with other ships coming and going and ongoin
 - **Maintenance:** drones move along the station arms and stop to weld, throwing off sparks. Warning lights blink on the hub and pads.
 - **Difficulty by tier:**
   - Higher-tier stations have more pads and more traffic, up to 8 ships.
-  - From **tier 4**, the whole station slowly **rotates**, so the pads move and landing gets harder.
+  - **Every station rotates**, so the pads are always moving. Tier-1 stations turn slowly (pads drift about 1.6 units/s), and the spin gets faster with each tier, up to about 4.4 units/s at tier 10.
 
 ## End of a Trip
 
@@ -185,7 +185,7 @@ For comparison, the starting ship moves at 40. Base damage is high everywhere: o
 
 **Homing shots:** scouts and fighters, the single-shot enemies, fire tracking rounds. They steer toward you at 3.5 radians per second, leave a trail, and burn out after 4 seconds. Simply running sideways won't shake them (about 99% hit). Dodging hard just before impact, so they overshoot, works roughly 3 times in 10. Bursts, spreads and boss patterns still fly straight.
 
-Each wave has a spawn budget of 6 + 1.9×d + 2.5×(wave number, starting at 0). Waves are a mix of all the enemy types at every difficulty: types are dealt from a shuffled deck across the flight, so you meet every type before any repeats. Enemies arrive in groups: lines, columns, V formations or scattered.
+Each wave has a spawn budget of 6 + 1.9×d + 2.5×(wave number, starting at 0), and **every wave has at least 6 hostile ships**. If the budget would buy fewer, extra groups are added; asteroids don't count toward the 6. Waves are a mix of all the enemy types at every difficulty: types are dealt from a shuffled deck across the flight, so you meet every type before any repeats. Enemies arrive in groups: lines, columns, V formations or scattered.
 
 **Boss (capital ship):** 1,100 HP and 33 shot damage at d1, shot speeds 34–60 (scaled like other enemies), 100 cr bounty at d1. It cycles through attack patterns:
 

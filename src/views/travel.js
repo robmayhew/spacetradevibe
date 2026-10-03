@@ -15,6 +15,7 @@ const BOTTOM = -50;
 const SPAWN_Y = 58;
 const MAX_PLAY_HALF_W = 70;
 const PLAYER_R = 1.3;
+const MIN_HOSTILES_PER_WAVE = 6; // asteroids are obstacles and don't count
 const HOMING_SHOT_LIFE = 4; // seconds before a tracking shot burns out
 const SEEKER_SHOT = [[0, 1.4], [0.6, -0.8], [0, -0.3], [-0.6, -0.8]];
 
@@ -39,14 +40,18 @@ function planWaves(d, count) {
     const groups = [];
     let spent = 0;
     let t = 0.3;
-    while (spent < budget) {
+    let hostiles = 0;
+    while (spent < budget || hostiles < MIN_HOSTILES_PER_WAVE) {
       if (!deck.length) deck = shuffle([...types]);
       const type = deck.pop();
+      // Once the budget is spent we're only topping up hostiles; asteroids don't count.
+      if (spent >= budget && type === 'asteroid') continue;
       const def = ENEMIES[type];
       const fit = Math.max(1, Math.floor((budget - spent) / def.cost) + 1);
       const n = Math.min(randInt(def.group[0], def.group[1]), fit);
       groups.push({ time: t, type, n, formation: pick(def.formations) });
       spent += def.cost * n;
+      if (type !== 'asteroid') hostiles += n;
       t += rand(2, 3.6);
     }
     return groups;
