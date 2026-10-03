@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { Starfield } from '../fx/starfield.js';
 import { Particles } from '../fx/particles.js';
-import { neon, disposeNeon, regularPolygon, glowSprite } from '../fx/neon.js';
-import { SHAPES } from '../fx/shapes.js';
+import { regularPolygon, glowSprite } from '../fx/geom.js';
+import { solid, disposeModel, addLights } from '../fx/model.js';
+import { SHAPES, GLASS } from '../fx/shapes.js';
 import { createPlayerShip } from '../fx/ship.js';
 import { textSprite } from '../fx/text.js';
 import { tierColor } from './starmap.js';
@@ -29,9 +30,13 @@ const NPC_TYPES = {
   tug: { r: 2, speed: [11, 16], weight: 2 },
   freighter: { r: 3, speed: [7, 11], weight: 1.5 },
 };
-const NPC_COLORS = [0xffaa33, 0xff66aa, 0x66ff99, 0xaab4ff, 0xdddddd];
+const NPC_COLORS = [0x9a7b4f, 0x7d8c99, 0x8f5f4f, 0x6f7f6a, 0xa09a8a];
+const STEEL = 0x6b7078;
+const ASSIGNED = 0xf2a541;
+const ASSIGNED_CSS = '#f2a541';
 
 const circleGeo = new THREE.CircleGeometry(0.45, 10);
+const markingGeo = new THREE.RingGeometry(PAD_R - 0.75, PAD_R - 0.35, 24);
 const segGeos = Array.from({ length: 24 }, (_, i) =>
   new THREE.RingGeometry(PAD_R + 0.7, PAD_R + 1.3, 3, 1, (i / 24) * Math.PI * 2 + Math.PI / 2, (Math.PI * 2) / 24 - 0.04),
 );
@@ -67,7 +72,8 @@ export class DockView {
     this.stats = shipStats(state);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x02030a);
+    this.scene.background = new THREE.Color(0x07080a);
+    addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-50, 50, TOP, BOTTOM, -10, 10);
     this.resize(app.w, app.h); // traffic spawning below needs the screen width
     this.stars = new Starfield(this.scene, app.pixelRatio);
@@ -101,7 +107,7 @@ export class DockView {
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };
 
     const guideGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-    this.guide = new THREE.Line(guideGeo, new THREE.LineBasicMaterial({ color: 0x33ffee, transparent: true, opacity: 0.25 }));
+    this.guide = new THREE.Line(guideGeo, new THREE.LineBasicMaterial({ color: ASSIGNED, transparent: true, opacity: 0.3 }));
     this.scene.add(this.guide);
 
     if (mode === 'undock') this.buildGate();
@@ -130,39 +136,48 @@ export class DockView {
 
   buildBackground() {
     const P = this.L.planet;
-    const pc = new THREE.Color().setHSL(P.hue, 0.6, 0.45);
-    const planet = neon(`planet${P.r.toFixed(1)}`, regularPolygon(64, P.r), pc, 0.07);
-    planet.position.set(P.x, P.y, -4);
+    const pc = new THREE.Color().setHSL(P.hue, 0.3, 0.2);
+    const planet = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(P.r, 1),
+      new THREE.MeshStandardMaterial({ color: pc, flatShading: true, roughness: 1, metalness: 0 }),
+    );
+    planet.scale.z = 0.15; // keep it inside the camera's depth range
+    planet.position.set(P.x, P.y, -7);
     this.scene.add(planet);
-    const glow = glowSprite(pc, P.r * 3, 0.12);
-    glow.position.set(P.x, P.y, -4.5);
+    this.planet = planet;
+    const glow = glowSprite(pc, P.r * 2.8, 0.1);
+    glow.position.set(P.x, P.y, -8);
     this.scene.add(glow);
   }
 
   buildStation() {
     const L = this.L;
     const accent = L.color;
+    // Station sits below the ships' z so hovering ships always draw on top.
     this.station = new THREE.Group();
-    this.station.position.set(0, L.hubY, -0.5);
+    this.station.position.set(0, L.hubY, -2);
     this.scene.add(this.station);
 
-    const hub = neon(`hub${L.hubR.toFixed(1)}`, regularPolygon(6, L.hubR, Math.PI / 6), accent, 0.05);
-    this.hubInner = neon(`hubIn${L.hubR.toFixed(1)}`, regularPolygon(6, L.hubR * 0.55), 0xffcc33, 0.04);
-    this.station.add(hub, this.hubInner);
-    const glow = glowSprite(accent, L.hubR * 4, 0.06);
-    glow.position.z = -0.5;
-    this.station.add(glow);
+    const hub = solid(`hub${L.hubR.toFixed(1)}`, regularPolygon(6, L.hubR, Math.PI / 6), STEEL, { depth: 2.5 });
+    const stripe = new THREE.Mesh(
+      new THREE.RingGeometry(L.hubR * 0.72, L.hubR * 0.8, 6, 1, Math.PI / 6),
+      new THREE.MeshBasicMaterial({ color: accent.clone().multiplyScalar(0.7) }),
+    );
+    stripe.position.z = 0.05;
+    this.hubInner = solid(`hubIn${L.hubR.toFixed(1)}`, regularPolygon(6, L.hubR * 0.55), 0x8d9299, { depth: 0.8 });
+    this.hubInner.position.z = 0.9;
+    this.station.add(hub, stripe, this.hubInner);
 
     this.lights = [];
     const light = (parent, x, y, color, rate, phase) => {
       const m = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color, transparent: true }));
-      m.position.set(x, y, 0.2);
+      m.position.set(x, y, 0.15);
       parent.add(m);
       const rec = { m, rate, phase };
       this.lights.push(rec);
       return rec;
     };
-    regularPolygon(6, L.hubR + 0.9, Math.PI / 6).forEach(([x, y], i) => light(this.station, x, y, 0xff3344, 1.5, i * 0.4));
+    regularPolygon(6, L.hubR - 0.8, Math.PI / 6).forEach(([x, y], i) => light(this.station, x, y, 0xff3a2a, 1.5, i * 0.4));
 
     this.pads = [];
     this.arms = [];
@@ -171,28 +186,30 @@ export class DockView {
     const armPts = [[r0, -ARM_HALF_W], [r1, -ARM_HALF_W], [r1, ARM_HALF_W], [r0, ARM_HALF_W]];
     for (let i = 0; i < L.padCount; i++) {
       const a = L.offset + (i / L.padCount) * Math.PI * 2;
-      const arm = neon(`arm${r0.toFixed(1)}_${r1.toFixed(1)}`, armPts, accent, 0.08);
+      const arm = solid(`arm${r0.toFixed(1)}_${r1.toFixed(1)}`, armPts, 0x5d6168, { depth: 1 });
       arm.rotation.z = a;
+      arm.position.z = -0.6;
       this.station.add(arm);
       this.arms.push({ a, r0, r1 });
 
       const pad = new THREE.Group();
-      pad.position.set(Math.cos(a) * L.armLen, Math.sin(a) * L.armLen, 0);
-      const ring = neon('pad', regularPolygon(24, PAD_R), 0x8899bb, 0.1);
-      const inner = neon('padInner', regularPolygon(24, PAD_R * 0.55), 0x8899bb, 0.05);
-      pad.add(ring, inner);
-      const num = textSprite(String(i + 1), '#8899bb', 2.6);
-      num.position.z = 0.3;
+      pad.position.set(Math.cos(a) * L.armLen, Math.sin(a) * L.armLen, -0.8);
+      pad.add(solid('pad', regularPolygon(12, PAD_R), 0x484c52, { depth: 0.3 }));
+      const marking = new THREE.Mesh(markingGeo, new THREE.MeshBasicMaterial({ color: 0x8a826a }));
+      marking.position.z = 0.05;
+      pad.add(marking);
+      const num = textSprite(String(i + 1), '#a8a08a', 2.6);
+      num.position.z = 0.1;
       pad.add(num);
       const padLights = [0.25, 0.75, 1.25, 1.75].map((k, j) =>
         light(pad, Math.cos(k * Math.PI) * (PAD_R + 0.9), Math.sin(k * Math.PI) * (PAD_R + 0.9), 0xffaa33, 3, j * 0.8),
       );
       this.station.add(pad);
-      this.pads.push({ num: i + 1, a, group: pad, ring, inner, numSprite: num, padLights, occupant: null, assigned: false });
+      this.pads.push({ num: i + 1, a, group: pad, marking, numSprite: num, padLights, occupant: null, assigned: false });
     }
 
     this.drones = Array.from({ length: L.drones }, () => {
-      const mesh = neon('drone', SHAPES.drone, 0xffcc44, 0.15);
+      const mesh = solid('drone', SHAPES.drone, 0xb3974c, { depth: 0.4 });
       this.station.add(mesh);
       const d = { mesh, lx: 0, ly: 0, state: 'weld', timer: 0 };
       this.pickDroneTarget(d);
@@ -204,17 +221,15 @@ export class DockView {
 
   styleAssignedPad() {
     const p = this.target;
-    p.group.remove(p.ring, p.inner, p.numSprite);
-    disposeNeon(p.ring);
-    disposeNeon(p.inner);
-    p.ring = neon('pad', regularPolygon(24, PAD_R), 0x33ffee, 0.06);
-    p.inner = neon('padInner', regularPolygon(24, PAD_R * 0.55), 0x33ffee, 0.03);
-    p.numSprite = textSprite(String(p.num), '#33ffee', 2.6);
-    p.numSprite.position.z = 0.3;
-    p.group.add(p.ring, p.inner, p.numSprite);
-    for (const l of p.padLights) l.m.material.color.set(0x33ffee);
+    p.marking.material.color.set(ASSIGNED);
+    p.group.remove(p.numSprite);
+    p.numSprite = textSprite(String(p.num), ASSIGNED_CSS, 2.6);
+    p.numSprite.position.z = 0.1;
+    p.group.add(p.numSprite);
+    for (const l of p.padLights) l.m.material.color.set(ASSIGNED);
     this.progressSegs = segGeos.map((g) => {
-      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x55ffaa }));
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x7dff9a }));
+      m.position.z = 0.1;
       m.visible = false;
       p.group.add(m);
       return m;
@@ -226,20 +241,23 @@ export class DockView {
     this.gate = new THREE.Group();
     const post = [[-0.8, -3], [0.8, -3], [0.8, 3], [-0.8, 3]];
     for (const s of [-1, 1]) {
-      const m = neon('gatePost', post, 0x33ffee, 0.3);
-      m.position.set(s * (GATE_HALF_W + 1), 0, 0);
+      const m = solid('gatePost', post, 0x5d6168, { depth: 1.2 });
+      m.position.set(s * (GATE_HALF_W + 1), 0, -0.5);
       this.gate.add(m);
+      const beacon = new THREE.Mesh(circleGeo, new THREE.MeshBasicMaterial({ color: ASSIGNED }));
+      beacon.position.set(s * (GATE_HALF_W + 1), 2.2, 0.2);
+      this.gate.add(beacon);
     }
     this.chevrons = [0, 1, 2].map((i) => {
       const geo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-4, -1.2, 0), new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(4, -1.2, 0),
       ]);
-      const c = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x33ffee, transparent: true }));
+      const c = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: ASSIGNED, transparent: true }));
       c.position.y = -3 + i * 3;
       this.gate.add(c);
       return c;
     });
-    const label = textSprite('GATE', '#33ffee', 2.2);
+    const label = textSprite('GATE', ASSIGNED_CSS, 2.2);
     label.position.set(0, -6, 0);
     this.gate.add(label);
     this.gate.position.set(gx, 45, 0);
@@ -336,7 +354,7 @@ export class DockView {
       case 'jump':
         p.vy += 140 * dt;
         p.y += p.vy * dt;
-        this.particles.emit(p.x, p.y - 3.4, 3, 0x33ffee, { speed: 10, angle: -Math.PI / 2, spread: 0.4, life: 0.5 });
+        this.particles.emit(p.x, p.y - 3.4, 3, 0xffb060, { speed: 10, angle: -Math.PI / 2, spread: 0.4, life: 0.5 });
         if (this.phaseT > 1.2) this.finish();
         break;
     }
@@ -372,7 +390,7 @@ export class DockView {
       this.setPhase('docked');
       this.audio.play('dock');
       this.hud.banner('Docked', this.bumps === 0 ? 'Precision docking!' : `${this.bumps} bump${this.bumps === 1 ? '' : 's'} logged`);
-      for (const l of this.target.padLights) l.m.material.color.set(0x55ff88);
+      for (const l of this.target.padLights) l.m.material.color.set(0x7dff9a);
     }
   }
 
@@ -445,7 +463,7 @@ export class DockView {
   // ---------------------------------------------------------------- traffic
 
   newNpcMesh(type) {
-    return neon(type, SHAPES[type], pick(NPC_COLORS), 0.3);
+    return solid(type, SHAPES[type], pick(NPC_COLORS), { glass: GLASS[type] });
   }
 
   spawnVisitor(alreadyDocked = false) {
@@ -552,7 +570,7 @@ export class DockView {
       if (!n.dead) return true;
       if (n.pad?.occupant === n) n.pad.occupant = null;
       this.scene.remove(n.mesh);
-      disposeNeon(n.mesh);
+      disposeModel(n.mesh);
       return false;
     });
   }
@@ -662,7 +680,12 @@ export class DockView {
     this.stars.dispose();
     this.particles.dispose();
     this.scene.traverse((o) => {
-      if (o.userData.neon) disposeNeon(o);
+      disposeModel(o);
     });
+    this.planet.geometry.dispose();
+    this.planet.material.dispose();
+    for (const l of this.lights) l.m.material.dispose();
+    for (const p of this.pads) p.marking.material.dispose();
+    for (const m of this.progressSegs) m.material.dispose();
   }
 }

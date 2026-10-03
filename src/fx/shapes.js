@@ -1,5 +1,14 @@
-import { RNG } from '../rng.js';
-import { starPolygon } from './neon.js';
+import { starPolygon } from './geom.js';
+
+// Canopies (translucent glass) drawn on top of some hulls.
+export const GLASS = {
+  player: [[0, 2.7], [0.55, 1.3], [0.5, 0.1], [-0.5, 0.1], [-0.55, 1.3]],
+  fighter: [[0, -1.9], [0.5, -0.6], [0, 0.4], [-0.5, -0.6]],
+  gunship: [[-1.2, -2.6], [1.2, -2.6], [1.6, -1.2], [-1.6, -1.2]],
+  boss: [[0, -4.6], [1.6, -2.8], [1.2, 0.4], [-1.2, 0.4], [-1.6, -2.8]],
+  shuttle: [[0, 1.5], [0.5, 0.4], [-0.5, 0.4]],
+  freighter: [[-0.9, 3.6], [0.9, 3.6], [1.2, 2.6], [-1.2, 2.6]],
+};
 
 // Enemy shapes point down (toward the player). Units are world units (view is 100 tall).
 export const SHAPES = {
@@ -24,16 +33,3 @@ export const SHAPES = {
 };
 
 export const ASTEROID_VARIANTS = 5;
-const asteroidCache = [];
-export function asteroidShape(v) {
-  if (!asteroidCache[v]) {
-    const rng = new RNG(1000 + v);
-    const n = 9;
-    asteroidCache[v] = Array.from({ length: n }, (_, i) => {
-      const a = (i / n) * Math.PI * 2;
-      const r = 3 * rng.float(0.7, 1.1);
-      return [Math.cos(a) * r, Math.sin(a) * r];
-    });
-  }
-  return asteroidCache[v];
-}

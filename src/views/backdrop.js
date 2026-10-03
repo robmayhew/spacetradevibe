@@ -1,21 +1,23 @@
 import * as THREE from 'three';
 import { Starfield } from '../fx/starfield.js';
-import { glowSprite, neon } from '../fx/neon.js';
-import { SHAPES } from '../fx/shapes.js';
+import { glowSprite } from '../fx/geom.js';
+import { addLights } from '../fx/model.js';
+import { createPlayerShip } from '../fx/ship.js';
 
 // Ambient starfield behind the main menu and station screens.
 export class BackdropView {
   constructor(pixelRatio) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x02030a);
+    this.scene.background = new THREE.Color(0x07080a);
+    addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-50, 50, 50, -50, -10, 10);
     this.stars = new Starfield(this.scene, pixelRatio);
     this.t = 0;
 
     const nebulae = [
-      [0x5522aa, -60, 20, 140, 0.18],
-      [0x0a6680, 70, -25, 160, 0.16],
-      [0xaa2255, 20, 45, 90, 0.08],
+      [0x4a3a5a, -60, 20, 140, 0.14],
+      [0x2a4a50, 70, -25, 160, 0.12],
+      [0x6a3a22, 20, 45, 90, 0.08],
     ];
     for (const [c, x, y, s, o] of nebulae) {
       const sp = glowSprite(c, s, o);
@@ -24,7 +26,7 @@ export class BackdropView {
     }
 
     // A ship that drifts across the menu for flavor.
-    this.ship = neon('player', SHAPES.player, 0x33ffee, 0.35);
+    this.ship = createPlayerShip().group;
     this.ship.scale.setScalar(1.6);
     this.scene.add(this.ship);
     this.showShip = true;

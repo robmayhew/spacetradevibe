@@ -14,7 +14,14 @@ A 2D video game where the player controls a spaceship seen from a top-down view.
 
 ## Visual Style
 
-Neon vector graphics: glowing outlined shapes with a translucent fill over a scrolling parallax starfield. Every enemy type has its own shape and color, and explosions are particle bursts.
+Low poly solid vector graphics. A rugged, gritty style with a translucent fill over a scrolling parallax starfield. Every enemy type has its own shape and color, and explosions are particle bursts.
+
+- **Ships and stations:** solid low-poly hulls with chamfered edges, flat-shaded under a single key light. Uneven panel shading, occasional scorch marks and dark panel lines make them look worn.
+- **Translucent fill:** glass canopies on ships, the shield bubble and engine glow.
+- **Palette:** muted and weathered (rust, ochre, olive, steel). Glow is kept only for shots, engines, warning lights and explosions.
+- **Explosions:** fireball particles plus debris in the wreck's hull color.
+- **Background:** asteroids are tumbling low-poly rocks, and docking scenes show a low-poly planet.
+- **Interface:** an industrial look with amber accents on gunmetal panels, hard corners and the Chakra Petch typeface.
 
 # Game Play
 
@@ -41,7 +48,7 @@ The screen has three tabs. A footer on every tab shows the selected contract and
 - the distance and roughly how many waves to expect
 - the total payout: cargo units × pay per unit
 
-Contracts whose difficulty is above your Ship Rating are **locked**. New contracts are generated every time you dock.
+Every contract can be flown. Each card shows a **danger rating** for your ship (see **Ship Rating**), and routes above your rating get a red border. Selecting a contract of Extreme danger or worse turns the button into a red **Launch anyway**. New contracts are generated every time you dock.
 
 *Ship Systems* Shows your Ship Rating and what you need for the next rating, then the upgrades and weapons (see **Ship & Upgrades**).
 
@@ -49,14 +56,15 @@ Contracts whose difficulty is above your Ship Rating are **locked**. New contrac
 
 - Drag to pan, scroll to zoom. **Center on me** and **Show all** buttons.
 - Systems are colored by tier and are dim until visited.
-- Your location pulses. Contract destinations are ringed: cyan if you can fly there, red if locked.
+- Your location pulses. Contract destinations are ringed in their danger color.
 - Hovering a system shows its details. Clicking a ringed system selects its contract.
 
 ## Travel Screen
 
 - The ship is seen top-down with the stars scrolling past. It moves forward, back, left and right but **never turns**.
 - Combat is arcade style against waves of enemies. Weapon damage removes enemy HP until the enemy is destroyed.
-- Each trip is **2–5 waves**. Longer routes tend to have more waves.
+- Each trip is **1-4 waves**. More difficult routes tend to have more waves.
+- **You must destroy every enemy in a wave before the next one starts.** Enemies never escape: anything that flies off the screen comes back in from the top for another pass. The HUD shows how many hostiles are left (and how many escorts remain during a boss fight). Asteroids are obstacles, not enemies; they drift past and don't need to be destroyed.
 - A **boss** (capital ship) may appear after the last wave. The chance is 15% + 3.5% per difficulty level. The route into the Terminus always has 5 waves and a boss.
 - Once the route is clear, the ship jumps toward the destination and the docking mini-game begins.
 
@@ -115,7 +123,17 @@ A summary pop-up shows the result every time you return to a station.
 
 Rating = floor((Weapons Core + Hull + Shield + 1) / 3), with a maximum of 10. The shield starts at level 0, which is why it counts +1. The starting ship is rating 1.
 
-**You can only accept routes whose difficulty is at or below your rating.** This is what forces you to grind level-1 routes and upgrade before moving on to level 2, and so on.
+**Nothing is locked.** Your rating only sets each route's **danger**:
+
+| Route difficulty vs. rating | Danger |
+| --- | --- |
+| Below your rating | Low |
+| Equal to your rating | Moderate |
+| 1 above | High |
+| 2 above | Extreme |
+| 3 or more above | Suicidal |
+
+Even Moderate routes can kill you, since enemies hit hard at every level. Upgrading is how you make harder routes survivable.
 
 ## Systems
 
@@ -123,9 +141,9 @@ Upgrade cost = base cost × 1.6 for each level already bought.
 
 | System | Counts toward rating | Start → Max | Effect | Base cost |
 | --- | --- | --- | --- | --- |
-| Weapons Core | Yes | 1 → 10 | All weapon damage ×1.45 per level | 210 |
-| Hull Plating | Yes | 1 → 10 | 120 hull, ×1.33 per level | 180 |
-| Deflector Shield | Yes | 0 → 10 | 35 shield at level 1, ×1.33 per level. Recharges 22%/s after 2.5 s without being hit | 240 |
+| Weapons Core | Yes | 1 → 10 | All weapon damage ×1.75 per level | 210 |
+| Hull Plating | Yes | 1 → 10 | 120 hull, ×1.43 per level | 180 |
+| Deflector Shield | Yes | 0 → 10 | 35 shield at level 1, ×1.43 per level. Recharges 22%/s after 2.5 s without being hit | 240 |
 | Engines | No | 1 → 6 | Speed 40, +6 per level | 300 |
 | Cargo Hold | No | 1 → 10 | 8 units, +4 per level (more pay per contract) | 250 |
 
@@ -146,26 +164,30 @@ Each weapon is bought once, and all of them are boosted by the Weapons Core. You
 
 Enemy stats scale with route difficulty (d):
 
-- HP ×1.45^(d−1)
-- damage ×1.33^(d−1)
-- fire rate 0.7 + 0.06×(d−1)
+- HP ×1.75^(d−1)
+- damage ×1.43^(d−1)
+- fire rate 1.1 + 0.06×(d−1)
 - bullet speed +4% per level
 - bounties ×1.55^(d−1)
 
 The HP and damage rates match the player's upgrade scaling, so upgrades at level N are balanced for difficulty-N routes.
 
-| Enemy | From difficulty | HP (d1) | Behavior |
-| --- | --- | --- | --- |
-| Scout | 1 | 20 | Weaves down in formation and fires straight down |
-| Asteroid (obstacle) | 1 | 45 (scales with size) | Drifts and spins. Hurts on contact |
-| Fighter | 1 | 40 | Hovers, tracks your position, fires aimed shots, then leaves |
-| Kamikaze | 3 | 14 | Locks onto you and rams |
-| Gunship | 4 | 180 | Slow and tough. Strafes and fires a 5-shot spread |
-| Sniper | 6 | 70 | Hangs back, repositions and fires fast 3-shot bursts |
+For comparison, the starting ship moves at 40. Base damage is high everywhere: one shot from a scout takes 20% of the starting ship's 120 hull, and a kamikaze ram takes over 60%.
 
-Each wave has a spawn budget of 6 + 1.9×d + 2.5×(wave number, starting at 0). Enemies arrive in groups: lines, columns, V formations or scattered.
+| Enemy | HP (d1) | Shot damage (d1) | Shot speed (d1) | Ram damage (d1) | Behavior |
+| --- | --- | --- | --- | --- | --- |
+| Scout | 20 | 24 | 45 | 36 | Weaves down in formation and fires **homing** shots |
+| Asteroid (obstacle) | 45 (scales with size) | none | none | 54 | Drifts and tumbles. Hurts on contact |
+| Fighter | 40 | 30 | 50 | 45 | Hovers, tracks your position and fires **homing** shots |
+| Kamikaze | 14 | none | none | 75 | Locks onto you and rams; if it misses, it comes back for another dive |
+| Gunship | 180 | 30 ×5 spread | 38 | 75 | Slow and tough. Strafes and fires a 5-shot spread |
+| Sniper | 70 | 39 ×3 burst | 85 | 45 | Hangs back, repositions and fires fast 3-shot bursts |
 
-**Boss (capital ship):** 1,100 HP at d1 (scaled like other enemies), 100 cr bounty at d1. It cycles through attack patterns:
+**Homing shots:** scouts and fighters, the single-shot enemies, fire tracking rounds. They steer toward you at 3.5 radians per second, leave a trail, and burn out after 4 seconds. Simply running sideways won't shake them (about 99% hit). Dodging hard just before impact, so they overshoot, works roughly 3 times in 10. Bursts, spreads and boss patterns still fly straight.
+
+Each wave has a spawn budget of 6 + 1.9×d + 2.5×(wave number, starting at 0). Waves are a mix of all the enemy types at every difficulty: types are dealt from a shuffled deck across the flight, so you meet every type before any repeats. Enemies arrive in groups: lines, columns, V formations or scattered.
+
+**Boss (capital ship):** 1,100 HP and 33 shot damage at d1, shot speeds 34–60 (scaled like other enemies), 100 cr bounty at d1. It cycles through attack patterns:
 
 - **Fan:** a spread of shots across the screen.
 - **Aimed:** rapid shots at the player.
@@ -176,7 +198,7 @@ Below 50% HP it gets faster and its spreads get wider.
 
 # Route Difficulty & Economy
 
-**Route Difficulty** Each route has a difficulty from 1 to 10, equal to the higher tier of its two stations. Level 1 can be done with the starting ship. After that, the Ship Rating gate means you must trade and upgrade before taking harder routes.
+**Route Difficulty** Each route has a difficulty from 1 to 10, equal to the higher tier of its two stations. Level 1 can be done with the starting ship, though not safely. Any route can be attempted; the danger rating shows how far it outclasses your ship.
 
 **Pay per unit:** 1.6 × good base price × 1.55^(d−1) × random 0.85–1.2 × (1 + distance/300).
 
@@ -216,7 +238,6 @@ Delivering to the Terminus shows a victory screen with your stats: deliveries, c
 - Is ~18 jumps and ~2–3 deliveries per rating the right length?
 - Docking happens twice per delivery (roughly 50+ times per game). Should there be a paid **autopilot** option to skip it once you've mastered it?
 - Is 4% hull per bump too punishing, or not punishing enough? Should the precision bonus be bigger?
-- Should the Ship Rating be a hard lock, or only a warning ("under-equipped")?
 - Is the loss on destruction (cargo + bounties + tow fee) too harsh or too soft?
 - Should the map hide unvisited systems (fog of war) instead of showing everything?
 - Possible additions:

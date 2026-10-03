@@ -11,7 +11,7 @@ export function textSprite(text, color = '#ffffff', height = 3) {
     c.width = 128;
     c.height = 64;
     const ctx = c.getContext('2d');
-    ctx.font = 'bold 44px Orbitron, system-ui, sans-serif';
+    ctx.font = 'bold 44px "Chakra Petch", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;

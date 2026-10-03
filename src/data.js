@@ -1,9 +1,9 @@
 // Tuning tables. Enemy stats scale by HP_GROWTH / DMG_GROWTH per route difficulty;
 // the player's matching upgrades scale at the same rates, so a ship whose
-// upgrades sit at level N is balanced for difficulty-N routes.
+// upgrades sit at level N is (barely) balanced for difficulty-N routes.
 
-export const HP_GROWTH = 1.45; // enemy HP per difficulty, and player damage per Weapons Core level
-export const DMG_GROWTH = 1.33; // enemy damage per difficulty, and player hull/shield per level
+export const HP_GROWTH = 1.75; // enemy HP per difficulty, and player damage per Weapons Core level
+export const DMG_GROWTH = 1.43; // enemy damage per difficulty, and player hull/shield per level
 export const PAY_GROWTH = 1.55; // payouts per difficulty
 export const COST_GROWTH = 1.6; // upgrade cost per level
 
@@ -100,38 +100,41 @@ export const WEAPONS = {
 export const WEAPON_ORDER = ['pulse', 'scatter', 'seeker', 'beam'];
 
 // hp/contact/bounty are difficulty-1 values; `cost` is the wave-budget cost.
+// fire.speed is the difficulty-1 bullet speed (the ship's base speed is 40).
+// fire.homing (radians/s) makes single shots steer toward the player until they burn out.
+// Every type can appear on every route.
 export const ENEMIES = {
   scout: {
-    hp: 20, speed: 14, contact: 12, bounty: 3, r: 1.8, color: 0xff3366,
-    cost: 1, minD: 1, weight: 5, group: [3, 6], formations: ['line', 'column', 'v'],
-    fire: { interval: [2.4, 3.8], dmg: 8 },
+    hp: 20, speed: 14, contact: 36, bounty: 3, r: 1.8, color: 0xa04a3c,
+    cost: 1, group: [3, 6], formations: ['line', 'column', 'v'],
+    fire: { interval: [2.4, 3.8], dmg: 24, speed: 45, homing: 3.5 },
   },
   asteroid: {
-    hp: 45, speed: 10, contact: 18, bounty: 2, r: 3, color: 0x8899bb,
-    cost: 1, minD: 1, weight: 2, group: [2, 5], formations: ['scatter'],
+    hp: 45, speed: 10, contact: 54, bounty: 2, r: 3, color: 0x6e665c,
+    cost: 1, group: [2, 5], formations: ['scatter'],
   },
   fighter: {
-    hp: 40, speed: 22, contact: 15, bounty: 5, r: 2.4, color: 0xff8833,
-    cost: 2, minD: 1, weight: 1.6, group: [1, 3], formations: ['scatter', 'v'],
-    fire: { interval: [1.6, 2.4], dmg: 10 },
+    hp: 40, speed: 22, contact: 45, bounty: 5, r: 2.4, color: 0xa8773e,
+    cost: 2, group: [1, 3], formations: ['scatter', 'v'],
+    fire: { interval: [1.6, 2.4], dmg: 30, speed: 50, homing: 3.5 },
   },
   kamikaze: {
-    hp: 14, speed: 48, contact: 25, bounty: 3, r: 1.5, color: 0xffee33,
-    cost: 1.2, minD: 3, weight: 3, group: [3, 6], formations: ['line', 'scatter'],
+    hp: 14, speed: 48, contact: 75, bounty: 3, r: 1.5, color: 0xb8a046,
+    cost: 1.2, group: [3, 6], formations: ['line', 'scatter'],
   },
   gunship: {
-    hp: 180, speed: 8, contact: 25, bounty: 15, r: 4.2, color: 0xaa55ff,
-    cost: 6, minD: 4, weight: 1.5, group: [1, 2], formations: ['line'],
-    fire: { interval: [2.3, 3], dmg: 10 },
+    hp: 180, speed: 8, contact: 75, bounty: 15, r: 4.2, color: 0x66607e,
+    cost: 6, group: [1, 2], formations: ['line'],
+    fire: { interval: [2.3, 3], dmg: 30, speed: 38 },
   },
   sniper: {
-    hp: 70, speed: 12, contact: 15, bounty: 8, r: 2.6, color: 0x44ff88,
-    cost: 3, minD: 6, weight: 1.5, group: [1, 3], formations: ['scatter'],
-    fire: { interval: [2.8, 3.6], dmg: 13 },
+    hp: 70, speed: 12, contact: 45, bounty: 8, r: 2.6, color: 0x557a5c,
+    cost: 3, group: [1, 3], formations: ['scatter'],
+    fire: { interval: [2.8, 3.6], dmg: 39, speed: 85 },
   },
   boss: {
-    hp: 1100, speed: 10, contact: 40, bounty: 100, r: 8, color: 0xff2255,
-    fire: { interval: [1, 1], dmg: 11 },
+    hp: 1100, speed: 10, contact: 120, bounty: 100, r: 8, color: 0x7c3434,
+    fire: { interval: [1, 1], dmg: 33, speed: 60, fanSpeed: 38, spiralSpeed: 34 },
   },
 };
 

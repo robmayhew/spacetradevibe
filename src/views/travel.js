@@ -1,19 +1,22 @@
 import * as THREE from 'three';
 import { Starfield } from '../fx/starfield.js';
 import { Particles } from '../fx/particles.js';
-import { neon, setFlash, disposeNeon } from '../fx/neon.js';
-import { SHAPES, asteroidShape, ASTEROID_VARIANTS } from '../fx/shapes.js';
+import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx/model.js';
+import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
+import { PLAYER_COLOR } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
 import { shipStats } from '../state.js';
 import { TravelHUD } from '../ui/hud.js';
 import { createPlayerShip } from '../fx/ship.js';
-import { rand, randInt, pick, clamp, weightedPick } from '../rng.js';
+import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
 
 const TOP = 50;
 const BOTTOM = -50;
 const SPAWN_Y = 58;
 const MAX_PLAY_HALF_W = 70;
 const PLAYER_R = 1.3;
+const HOMING_SHOT_LIFE = 4; // seconds before a tracking shot burns out
+const SEEKER_SHOT = [[0, 1.4], [0.6, -0.8], [0, -0.3], [-0.6, -0.8]];
 
 const circleGeo = new THREE.CircleGeometry(0.7, 10);
 const pelletGeo = new THREE.CircleGeometry(0.45, 8);
@@ -25,17 +28,23 @@ function basicMat(color) {
   return matCache.get(color);
 }
 
-// Plan 2-5 waves of spawn groups whose total "cost" grows with difficulty and wave index.
+// Plan waves of spawn groups whose total "cost" grows with difficulty and wave index.
+// Types are dealt from a shuffled deck shared across the trip, so every flight
+// sees a mix of all enemy types before any repeats.
 function planWaves(d, count) {
-  const pool = Object.entries(ENEMIES).filter(([id, e]) => id !== 'boss' && e.minD <= d);
+  const types = Object.keys(ENEMIES).filter((id) => id !== 'boss');
+  let deck = [];
   return Array.from({ length: count }, (_, w) => {
     const budget = 6 + d * 1.9 + w * 2.5;
     const groups = [];
     let spent = 0;
     let t = 0.3;
     while (spent < budget) {
-      const [type, def] = weightedPick(pool, ([, e]) => e.weight);
-      const n = randInt(def.group[0], def.group[1]);
+      if (!deck.length) deck = shuffle([...types]);
+      const type = deck.pop();
+      const def = ENEMIES[type];
+      const fit = Math.max(1, Math.floor((budget - spent) / def.cost) + 1);
+      const n = Math.min(randInt(def.group[0], def.group[1]), fit);
       groups.push({ time: t, type, n, formation: pick(def.formations) });
       spent += def.cost * n;
       t += rand(2, 3.6);
@@ -56,10 +65,11 @@ export class TravelView {
     this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
     this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
-    this.fireRate = 0.7 + 0.06 * (this.d - 1); // gentler start for the stock ship
+    this.fireRate = 1.1 + 0.06 * (this.d - 1);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x02030a);
+    this.scene.background = new THREE.Color(0x07080a);
+    addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-50, 50, TOP, BOTTOM, -10, 10);
     this.stars = new Starfield(this.scene, app.pixelRatio);
     this.particles = new Particles(this.scene, app.pixelRatio);
@@ -174,10 +184,14 @@ export class TravelView {
   }
 
   waveText() {
-    if (this.phase === 'boss' || this.phase === 'bossWarn') return 'CAPITAL SHIP';
+    if (this.phase === 'boss' || this.phase === 'bossWarn') {
+      const escorts = this.enemies.filter((e) => this.isHostile(e) && e.type !== 'boss').length;
+      return `CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
+    }
     if (this.phase === 'outro') return 'DOCKING';
     if (this.waveIndex < 0) return 'EN ROUTE';
-    return `WAVE ${this.waveIndex + 1} / ${this.waves.length}${this.hasBoss ? ' + BOSS' : ''}`;
+    const left = this.phase === 'wave' ? ` · ${this.hostilesLeft()} LEFT` : '';
+    return `WAVE ${this.waveIndex + 1} / ${this.waves.length}${this.hasBoss ? ' + BOSS' : ''}${left}`;
   }
 
   updatePhase(dt) {
@@ -198,7 +212,7 @@ export class TravelView {
           const s = this.spawnQueue.shift();
           this.spawnEnemy(s.type, s.x, s.y);
         }
-        if (!this.spawnQueue.length && !this.enemies.some((e) => !e.dead)) this.nextWave();
+        if (!this.spawnQueue.length && !this.enemies.some((e) => this.isHostile(e))) this.nextWave();
         break;
       case 'bossWarn':
         if (this.phaseT > 2.6) {
@@ -207,7 +221,7 @@ export class TravelView {
         }
         break;
       case 'boss':
-        if (this.bossKilled && !this.enemies.some((e) => !e.dead)) {
+        if (this.bossKilled && !this.enemies.some((e) => this.isHostile(e))) {
           if (!this.bossClearT) this.bossClearT = this.phaseT;
           if (this.phaseT - this.bossClearT > 1.5) this.startOutro();
         }
@@ -358,7 +372,7 @@ export class TravelView {
     let mesh;
     if (s.kind === 'bolt') mesh = new THREE.Mesh(boltGeo, basicMat(s.color));
     else if (s.kind === 'pellet') mesh = new THREE.Mesh(pelletGeo, basicMat(s.color));
-    else mesh = neon('missile', SHAPES.missile, s.color, 0.8);
+    else mesh = flatShape('missile', SHAPES.missile, s.color);
     mesh.position.set(s.x, s.y, 0.1);
     this.scene.add(mesh);
     s.mesh = mesh;
@@ -390,7 +404,7 @@ export class TravelView {
       this.playerMesh.visible = false;
       this.beamMesh.visible = false;
       this.audio.beam(false);
-      this.particles.explode(p.x, p.y, 0x33ffee, 4);
+      this.particles.explode(p.x, p.y, PLAYER_COLOR, 4);
       this.particles.explode(p.x, p.y, 0xff8833, 3);
       this.shake = 3;
       this.audio.play('death');
@@ -407,11 +421,11 @@ export class TravelView {
     let size = 1;
     if (type === 'asteroid') {
       const v = randInt(0, ASTEROID_VARIANTS - 1);
-      mesh = neon('asteroid' + v, asteroidShape(v), def.color, 0.15);
+      mesh = rock(v, def.color);
       size = rand(0.75, 1.35);
       mesh.scale.setScalar(size);
     } else {
-      mesh = neon(type, SHAPES[type], def.color, 0.3);
+      mesh = solid(type, SHAPES[type], def.color, { glass: GLASS[type] });
     }
     mesh.position.set(x, y, 0);
     this.scene.add(mesh);
@@ -450,15 +464,17 @@ export class TravelView {
         case 'asteroid':
           e.x += e.vx * dt;
           e.y -= def.speed * dt;
-          e.mesh.rotation.z += e.spin * dt;
+          e.mesh.userData.rock.rotation.x += e.spin * dt;
+          e.mesh.userData.rock.rotation.y += e.spin * 0.7 * dt;
           break;
         case 'fighter':
-          if (e.t < 9) {
-            e.y += (e.holdY - e.y) * Math.min(1, dt * 1.5);
-            e.x += clamp(p.x - e.x, -1, 1) * def.speed * 0.7 * dt;
-          } else {
-            e.y -= 40 * dt;
+          // Hovers and shadows the player; shifts altitude now and then. Never leaves.
+          if (e.t > (e.reholdT || 7)) {
+            e.holdY = rand(12, 34);
+            e.reholdT = e.t + rand(5, 8);
           }
+          e.y += (e.holdY - e.y) * Math.min(1, dt * 1.5);
+          e.x += clamp(p.x - e.x, -1, 1) * def.speed * 0.7 * dt;
           break;
         case 'kamikaze':
           if (e.t < 0.9) {
@@ -476,29 +492,20 @@ export class TravelView {
           e.mesh.rotation.z += 8 * dt;
           break;
         case 'gunship':
-          if (e.t < 16) {
-            e.y += (e.holdY - e.y) * Math.min(1, dt * 0.8);
-            e.x = clamp(e.baseX + Math.sin(e.t * 0.5) * 15, -this.playHalfW, this.playHalfW);
-          } else {
-            e.y -= 15 * dt;
-          }
+          e.y += (e.holdY - e.y) * Math.min(1, dt * 0.8);
+          e.x = clamp(e.baseX + Math.sin(e.t * 0.5) * 15, -this.playHalfW, this.playHalfW);
           break;
         case 'sniper':
-          if (e.t < 14) {
-            e.y += (e.holdY - e.y) * Math.min(1, dt * 1.2);
-            if (!e.moveT || e.t > e.moveT) {
-              e.targetX = rand(-this.playHalfW * 0.9, this.playHalfW * 0.9);
-              e.moveT = e.t + 3;
-            }
-            e.x += (e.targetX - e.x) * Math.min(1, dt * 1.5);
-          } else {
-            e.y += 30 * dt; // warps out upward
-            if (e.y > SPAWN_Y + 5) e.dead = true;
+          e.y += (e.holdY - e.y) * Math.min(1, dt * 1.2);
+          if (!e.moveT || e.t > e.moveT) {
+            e.targetX = rand(-this.playHalfW * 0.9, this.playHalfW * 0.9);
+            e.moveT = e.t + 3;
           }
+          e.x += (e.targetX - e.x) * Math.min(1, dt * 1.5);
           if (e.burst > 0) {
             e.burstT -= dt;
             if (e.burstT <= 0) {
-              this.aimedShot(e, 55, def.fire.dmg, 0x44ff88);
+              this.aimedShot(e, def.fire.speed * this.bulletSpeed, def.fire.dmg * this.dmgMult, 0x44ff88);
               e.burst--;
               e.burstT = 0.14;
             }
@@ -544,7 +551,8 @@ export class TravelView {
     }
     if (e.patternT > 3.4) return; // breather between patterns
 
-    const dmg = e.def.fire.dmg * this.dmgMult;
+    const f = e.def.fire;
+    const dmg = f.dmg * this.dmgMult;
     const bs = this.bulletSpeed;
     e.shotT -= dt * speedUp;
     if (e.shotT > 0) return;
@@ -554,20 +562,20 @@ export class TravelView {
         const off = (Math.random() - 0.5) * 0.15;
         for (let i = 0; i < n; i++) {
           const a = -Math.PI / 2 + off + (i - (n - 1) / 2) * (1.9 / (n - 1));
-          this.eShot(e.x, e.y - 5, Math.cos(a) * 22 * bs, Math.sin(a) * 22 * bs, dmg, 0xff66cc);
+          this.eShot(e.x, e.y - 5, Math.cos(a) * f.fanSpeed * bs, Math.sin(a) * f.fanSpeed * bs, dmg, 0xff66cc);
         }
         e.shotT = 0.9;
         break;
       }
       case 'aimed':
-        this.aimedShot(e, 38 * bs, dmg, 0xff66cc, (Math.random() - 0.5) * 0.25);
+        this.aimedShot(e, f.speed * bs, dmg, 0xff66cc, (Math.random() - 0.5) * 0.25);
         e.shotT = 0.16;
         break;
       case 'spiral': {
         const arms = this.d >= 5 ? 3 : 2;
         for (let k = 0; k < arms; k++) {
           const a = e.spiralA + (k * Math.PI * 2) / arms;
-          this.eShot(e.x, e.y, Math.cos(a) * 20 * bs, Math.sin(a) * 20 * bs, dmg * 0.8, 0xff3399);
+          this.eShot(e.x, e.y, Math.cos(a) * f.spiralSpeed * bs, Math.sin(a) * f.spiralSpeed * bs, dmg * 0.8, 0xff3399);
         }
         e.spiralA += 0.33;
         e.shotT = 0.09;
@@ -584,15 +592,15 @@ export class TravelView {
     const bs = this.bulletSpeed;
     switch (e.type) {
       case 'scout':
-        this.eShot(e.x, e.y - 2, 0, -26 * bs, dmg, 0xff3366);
+        this.eShot(e.x, e.y - 2, 0, -e.def.fire.speed * bs, dmg, 0xff3366, e.def.fire.homing);
         break;
       case 'fighter':
-        this.aimedShot(e, 30 * bs, dmg, 0xff8833);
+        this.aimedShot(e, e.def.fire.speed * bs, dmg, 0xff8833, 0, e.def.fire.homing);
         break;
       case 'gunship':
         for (let k = -2; k <= 2; k++) {
           const a = -Math.PI / 2 + k * 0.22;
-          this.eShot(e.x, e.y - 4, Math.cos(a) * 22 * bs, Math.sin(a) * 22 * bs, dmg, 0xbb66ff);
+          this.eShot(e.x, e.y - 4, Math.cos(a) * e.def.fire.speed * bs, Math.sin(a) * e.def.fire.speed * bs, dmg, 0xbb66ff);
         }
         break;
       case 'sniper':
@@ -603,16 +611,16 @@ export class TravelView {
     this.audio.play('enemyShot');
   }
 
-  aimedShot(e, speed, dmg, color, spread = 0) {
+  aimedShot(e, speed, dmg, color, spread = 0, homing = 0) {
     const a = Math.atan2(this.player.y - e.y, this.player.x - e.x) + spread;
-    this.eShot(e.x, e.y, Math.cos(a) * speed, Math.sin(a) * speed, dmg, color);
+    this.eShot(e.x, e.y, Math.cos(a) * speed, Math.sin(a) * speed, dmg, color, homing);
   }
 
-  eShot(x, y, vx, vy, dmg, color) {
-    const mesh = new THREE.Mesh(circleGeo, basicMat(color));
+  eShot(x, y, vx, vy, dmg, color, homing = 0) {
+    const mesh = homing ? flatShape('seekerShot', SEEKER_SHOT, color) : new THREE.Mesh(circleGeo, basicMat(color));
     mesh.position.set(x, y, 0.1);
     this.scene.add(mesh);
-    this.eShots.push({ x, y, vx, vy, dmg, r: 0.7, mesh, color });
+    this.eShots.push({ x, y, vx, vy, dmg, r: 0.7, mesh, color, homing, age: 0 });
   }
 
   damageEnemy(e, dmg, silent = false) {
@@ -635,7 +643,7 @@ export class TravelView {
     if (e.type === 'boss') {
       this.bossKilled = true;
       for (let i = 0; i < 6; i++) {
-        this.particles.explode(e.x + rand(-8, 8), e.y + rand(-5, 5), i % 2 ? 0xff2255 : 0xffcc33, 3);
+        this.particles.explode(e.x + rand(-8, 8), e.y + rand(-5, 5), e.def.color, 3);
       }
       this.clearEnemyShots();
       this.shake = 4;
@@ -682,11 +690,33 @@ export class TravelView {
       s.mesh.position.set(s.x, s.y, 0.1);
       if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) s.dead = true;
     }
+    const p = this.player;
     for (const s of this.eShots) {
+      if (s.homing) {
+        s.age += dt;
+        if (s.age > HOMING_SHOT_LIFE) {
+          this.particles.emit(s.x, s.y, 5, s.color, { speed: 8, life: 0.4 });
+          s.dead = true;
+          continue;
+        }
+        // Steer toward the player at a limited turn rate; dead pilots aren't tracked.
+        let a = Math.atan2(s.vy, s.vx);
+        if (this.phase !== 'dead') {
+          const want = Math.atan2(p.y - s.y, p.x - s.x);
+          const diff = Math.atan2(Math.sin(want - a), Math.cos(want - a));
+          a += clamp(diff, -s.homing * dt, s.homing * dt);
+        }
+        const sp = Math.hypot(s.vx, s.vy);
+        s.vx = Math.cos(a) * sp;
+        s.vy = Math.sin(a) * sp;
+        s.mesh.rotation.z = a - Math.PI / 2;
+        if (Math.random() < 0.6) this.particles.emit(s.x, s.y, 1, s.color, { speed: 3, life: 0.3 });
+      }
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
-      if (s.y < BOTTOM - 3 || s.y > TOP + 12 || Math.abs(s.x) > this.halfW + 3) s.dead = true;
+      const m = s.homing ? 30 : 3; // homing shots may swing offscreen and curve back
+      if (s.y < BOTTOM - m || s.y > TOP + 12 + m || Math.abs(s.x) > this.halfW + m) s.dead = true;
     }
   }
 
@@ -751,15 +781,33 @@ export class TravelView {
         }
         return true;
       });
+    // Hostiles can't escape: anything that leaves the screen comes back in from the top
+    // for another pass. Only asteroids (obstacles) drift away for good.
     for (const e of this.enemies) {
-      if (e.type === 'boss') continue;
-      if (e.y < BOTTOM - 10 || Math.abs(e.x) > W || (e.t > 3 && e.y > SPAWN_Y + 15)) {
-        e.dead = true;
-      }
+      if (e.dead || e.type === 'boss') continue;
+      const gone = e.y < BOTTOM - 10 || Math.abs(e.x) > W || (e.t > 3 && e.y > SPAWN_Y + 15);
+      if (!gone) continue;
+      if (e.type === 'asteroid') e.dead = true;
+      else this.reenter(e);
     }
-    this.enemies = keep(this.enemies, (e) => disposeNeon(e.mesh));
-    this.pShots = keep(this.pShots, (s) => s.kind === 'missile' && disposeNeon(s.mesh));
-    this.eShots = keep(this.eShots);
+    this.enemies = keep(this.enemies, (e) => disposeModel(e.mesh));
+    this.pShots = keep(this.pShots, (s) => s.kind === 'missile' && s.mesh.material.dispose());
+    this.eShots = keep(this.eShots, (s) => s.homing && s.mesh.material.dispose());
+  }
+
+  reenter(e) {
+    e.x = e.baseX = rand(-this.playHalfW * 0.8, this.playHalfW * 0.8);
+    e.y = SPAWN_Y;
+    e.t = 0;
+    e.locked = false; // kamikazes line up a fresh dive
+  }
+
+  isHostile(e) {
+    return !e.dead && e.type !== 'asteroid';
+  }
+
+  hostilesLeft() {
+    return this.enemies.filter((e) => this.isHostile(e)).length + this.spawnQueue.filter((q) => q.type !== 'asteroid').length;
   }
 
   // ---------------------------------------------------------------- arrival
@@ -782,7 +830,7 @@ export class TravelView {
       this.outroV += 110 * dt;
       p.y += this.outroV * dt;
       p.x *= 1 - Math.min(1, dt * 1.5);
-      this.particles.emit(p.x, p.y - 3.4, 3, 0x33ffee, { speed: 10, angle: -Math.PI / 2, spread: 0.4, life: 0.5 });
+      this.particles.emit(p.x, p.y - 3.4, 3, 0xffb060, { speed: 10, angle: -Math.PI / 2, spread: 0.4, life: 0.5 });
     }
     if (this.phaseT > 3.2) this.finish({ success: true });
   }
@@ -802,7 +850,7 @@ export class TravelView {
     this.stars.dispose();
     this.particles.dispose();
     this.scene.traverse((o) => {
-      if (o.userData.neon) disposeNeon(o);
+      disposeModel(o);
     });
   }
 }

@@ -24,6 +24,6 @@ npm run dev
 - `src/state.js` holds save data, the economy, contracts and ship rating.
 - `src/views/` has the Three.js scenes: `dock` (docking/undocking mini-game), `travel` (combat), `starmap`, `backdrop`.
 - `src/ui/` has the DOM screens: menu, station, and the in-flight HUD.
-- `src/fx/` has the neon shapes, particles and starfield.
+- `src/fx/` has the low-poly model builder (`model.js`), ship outlines, particles and starfield.
 
 Progress auto-saves to `localStorage` each time you dock.

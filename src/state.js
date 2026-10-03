@@ -33,10 +33,24 @@ export function shipStats(state) {
 }
 
 // Average of the three combat systems; shield starts at 0 so it counts as +1.
-// A route can only be flown when rating >= its difficulty.
+// Routes above the rating can still be flown; they're just rated more dangerous.
 export function shipRating(state) {
   const u = state.upgrades;
   return Math.min(10, Math.floor((u.core + u.hull + u.shield + 1) / 3));
+}
+
+const DANGER = [
+  { label: 'Low', color: '#8fbf5a' },
+  { label: 'Moderate', color: '#e8c767' },
+  { label: 'High', color: '#f2a541' },
+  { label: 'Extreme', color: '#d0453a' },
+  { label: 'Suicidal', color: '#ff2e2e' },
+];
+
+// Danger of a route for this ship: how far its difficulty sits above the ship rating.
+export function routeDanger(difficulty, rating) {
+  const level = Math.max(0, Math.min(DANGER.length - 1, difficulty - rating + 1));
+  return { level, ...DANGER[level] };
 }
 
 export function upgradeCost(key, level) {
@@ -70,7 +84,8 @@ export function generateContracts(state, galaxy) {
         good = pick(GOODS.filter((g) => g.tier <= difficulty && g.tier >= difficulty - 2));
       }
       const pay = Math.round(1.6 * good.base * Math.pow(PAY_GROWTH, difficulty - 1) * rand(0.85, 1.2) * (1 + dist / 300));
-      const waves = Math.max(2, Math.min(5, Math.round(1.5 + dist / 35 + rand(-1, 1))));
+      // 1 wave on the easiest routes, up to 4 on the hardest.
+      const waves = Math.max(1, Math.min(4, Math.round(1 + ((difficulty - 1) * 3) / 9 + rand(-0.7, 0.7))));
       return { dest: id, difficulty, good: good.name, pay, dist: Math.round(dist), waves };
     })
     .sort((a, b) => a.difficulty - b.difficulty || b.pay - a.pay);

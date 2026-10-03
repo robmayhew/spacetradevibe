@@ -1,6 +1,6 @@
 import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER } from '../data.js';
 import {
-  shipStats, shipRating, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save,
+  shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save,
 } from '../state.js';
 import { routeDifficulty } from '../galaxy.js';
 import { tierCss } from '../views/starmap.js';
@@ -9,6 +9,11 @@ const fmt = (n) => Math.round(n).toLocaleString();
 
 function pips(level, max, color = '') {
   return `<span class="pips">${Array.from({ length: max }, (_, i) => `<i class="${i < level ? 'on' : ''}" style="${i < level && color ? `background:${color}` : ''}"></i>`).join('')}</span>`;
+}
+
+function dangerTag(difficulty, rating) {
+  const d = routeDanger(difficulty, rating);
+  return `<span class="danger-tag lvl${d.level}" style="--c:${d.color}">${d.level >= 3 ? '⚠ ' : ''}${d.label} danger</span>`;
 }
 
 function diffBadge(d) {
@@ -86,10 +91,7 @@ export class StationScreen {
 
   selectContract(destId) {
     const c = this.state.contracts.find((c) => c.dest === destId);
-    if (!c || c.difficulty > shipRating(this.state)) {
-      this.app.audio.play('deny');
-      return;
-    }
+    if (!c) return;
     this.selected = destId;
     this.app.audio.play('click');
     this.render();
@@ -123,7 +125,7 @@ export class StationScreen {
           .map(([id, label]) => `<button class="tab ${this.tab === id ? 'active' : ''}" data-act="tab" data-id="${id}">${label}</button>`)
           .join('')}
       </nav>
-      <main class="tab-body ${this.tab}">${this.renderTab(stats, rating)}</main>
+      <main class="tab-body tab-${this.tab}">${this.renderTab(stats, rating)}</main>
       <footer class="st-footer">${this.renderFooter(stats)}</footer>`;
 
     if (this.tab === 'map') {
@@ -157,7 +159,7 @@ export class StationScreen {
       <div class="map-info panel">${this.mapHint()}</div>
       <div class="map-legend panel">
         <div class="legend-row">${Array.from({ length: 10 }, (_, i) => `<span style="background:${tierCss(i + 1)}">${i + 1}</span>`).join('')}</div>
-        <div class="muted small">Route difficulty · Dim = unvisited · Ring = contract offer</div>
+        <div class="muted small">Route difficulty · Dim = unvisited · Ring = contract, colored by danger</div>
         <div class="legend-actions"><button class="btn small" data-act="here">Center on me</button><button class="btn small" data-act="fit">Show all</button></div>
       </div>`;
   }
@@ -173,8 +175,7 @@ export class StationScreen {
     let route = '';
     if (sys.id === s.current) route = '<div class="accent">You are here</div>';
     else if (contract) {
-      const locked = contract.difficulty > rating;
-      route = `<div>Route difficulty ${diffBadge(contract.difficulty)} ${locked ? '<span class="warn">Locked: requires rating ' + contract.difficulty + '</span>' : ''}</div>
+      route = `<div>Route difficulty ${diffBadge(contract.difficulty)} ${dangerTag(contract.difficulty, rating)}</div>
         <div>${contract.good} · ${contract.pay} cr/unit</div>`;
     } else if (this.galaxy.systems[s.current].links.includes(sys.id)) {
       route = `<div>Route difficulty ${diffBadge(routeDifficulty(this.galaxy, s.current, sys.id))} · no contract offered</div>`;
@@ -191,11 +192,11 @@ export class StationScreen {
     const cards = s.contracts
       .map((c) => {
         const dest = this.galaxy.systems[c.dest];
-        const locked = c.difficulty > rating;
+        const danger = routeDanger(c.difficulty, rating);
         const total = c.pay * stats.cargo;
         const sel = this.selected === c.dest;
         return `
-        <button class="contract panel ${locked ? 'locked' : ''} ${sel ? 'selected' : ''}" data-act="select" data-id="${c.dest}">
+        <button class="contract panel danger-${danger.level} ${sel ? 'selected' : ''}" data-act="select" data-id="${c.dest}">
           <div class="c-head">
             <div>
               <div class="eyebrow">Destination${s.visited.includes(c.dest) ? '' : ' · Unexplored'}</div>
@@ -206,14 +207,13 @@ export class StationScreen {
           <div class="c-body">
             <div><label>Cargo</label><b>${c.good}</b></div>
             <div><label>Pay</label><b>${c.pay} cr/unit</b></div>
-            <div><label>Distance</label><b>${c.dist} ly · ~${c.waves} waves</b></div>
+            <div><label>Distance</label><b>${c.dist} ly · ~${c.waves} wave${c.waves === 1 ? "" : "s"}</b></div>
           </div>
           <div class="c-foot">
             ${pips(c.difficulty, 10, tierCss(c.difficulty))}
-            ${locked
-              ? `<span class="warn">🔒 Requires ship rating ${c.difficulty}</span>`
-              : `<span class="payout">${stats.cargo} × ${c.pay} = <b>${fmt(total)} cr</b></span>`}
+            <span class="payout">${stats.cargo} × ${c.pay} = <b>${fmt(total)} cr</b></span>
           </div>
+          <div class="c-danger">${dangerTag(c.difficulty, rating)}${c.difficulty > rating ? `<span class="muted small">Rating ${rating} vs difficulty ${c.difficulty}</span>` : ''}</div>
           ${dest.terminus ? '<div class="accent small">Final destination. Expect heavy resistance and a capital ship.</div>' : ''}
         </button>`;
       })
@@ -222,7 +222,7 @@ export class StationScreen {
     return `
       <div class="contracts">${cards}</div>
       ${lowHull ? '<p class="warn center">⚠ Hull integrity is low. Consider repairing before launch.</p>' : ''}
-      ${s.contracts.every((c) => c.difficulty > rating) ? '<p class="warn center">Every route from here is beyond your ship. Upgrade under Ship Systems.</p>' : ''}`;
+      ${s.contracts.every((c) => c.difficulty > rating) ? '<p class="warn center">Every route from here is above your ship rating. Upgrade under Ship Systems, or risk it.</p>' : ''}`;
   }
 
   renderShip(stats, rating) {
@@ -265,7 +265,7 @@ export class StationScreen {
         <div class="big-rating">${rating}</div>
         <div>
           <h3>Ship Rating</h3>
-          <p class="muted">Average of Weapons Core, Hull and Shield levels (the shield counts +1). You can only accept routes whose difficulty is at or below your rating.</p>
+          <p class="muted">Average of Weapons Core, Hull and Shield levels (the shield counts +1). Routes above your rating are increasingly dangerous: each level above raises the danger rating.</p>
           ${rating < 10 ? `<p>Need <b>${needed}</b> more level${needed === 1 ? '' : 's'} across rated systems to reach rating <b>${rating + 1}</b>.</p>` : '<p class="accent">Maximum rating reached.</p>'}
         </div>
       </div>
@@ -279,13 +279,14 @@ export class StationScreen {
     const s = this.state;
     const c = s.contracts.find((c) => c.dest === this.selected);
     const dest = c && this.galaxy.systems[c.dest];
+    const risky = c && routeDanger(c.difficulty, shipRating(s)).level >= 3;
     return `
       <div class="sel-summary">
         ${c
-          ? `<span class="eyebrow">Selected</span> <b>${dest.name}</b> · ${c.good} ×${stats.cargo} · <b class="accent">${fmt(c.pay * stats.cargo)} cr</b> · Difficulty ${diffBadge(c.difficulty)}`
+          ? `<span class="eyebrow">Selected</span> <b>${dest.name}</b> · ${c.good} ×${stats.cargo} · <b class="accent">${fmt(c.pay * stats.cargo)} cr</b> · Difficulty ${diffBadge(c.difficulty)} ${dangerTag(c.difficulty, shipRating(s))}`
           : '<span class="muted">Select a destination contract to launch.</span>'}
       </div>
-      <button class="btn primary launch" data-act="launch" ${c ? '' : 'disabled'}>Launch ▶</button>`;
+      <button class="btn ${risky ? 'danger' : 'primary'} launch" data-act="launch" ${c ? '' : 'disabled'}>${risky ? 'Launch anyway ▶' : 'Launch ▶'}</button>`;
   }
 
   showReport(r) {

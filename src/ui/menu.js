@@ -17,8 +17,8 @@ export function renderMenu(root, { hasSave, muted, onNew, onContinue, onToggleMu
         <h3>How to play</h3>
         <ul>
           <li>Pick a contract at the station, then <b>Launch</b> to haul it to the destination.</li>
-          <li>Survive 2–5 waves of hostiles (sometimes a capital ship) to dock and get paid.</li>
-          <li>Spend credits on upgrades. Each route has a difficulty from 1 to 10, and your <b>Ship Rating</b> must match it.</li>
+          <li>Survive 1–4 waves of hostiles (sometimes a capital ship) to dock and get paid.</li>
+          <li>Spend credits on upgrades. Routes run from difficulty 1 to 10; flying above your <b>Ship Rating</b> is allowed but deadly.</li>
           <li>Fly deeper into the galaxy and reach the <b>Terminus</b> to win.</li>
         </ul>
         <div class="keys">

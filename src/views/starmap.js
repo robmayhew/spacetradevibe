@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { neon } from '../fx/neon.js';
+import { solid, addLights } from '../fx/model.js';
 import { SHAPES } from '../fx/shapes.js';
 import { TIERS } from '../galaxy.js';
 import { clamp } from '../rng.js';
+import { routeDanger } from '../state.js';
 
 export function tierColor(t) {
   const hue = (0.5 - ((t - 1) / (TIERS - 1)) * 0.6 + 1) % 1;
-  return new THREE.Color().setHSL(hue, 1, 0.55);
+  return new THREE.Color().setHSL(hue, 0.6, 0.5);
 }
 export function tierCss(t) {
   return '#' + tierColor(t).getHexString();
@@ -20,7 +21,8 @@ export class StarMapView {
   constructor(galaxy, pixelRatio) {
     this.galaxy = galaxy;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x02030a);
+    this.scene.background = new THREE.Color(0x07080a);
+    addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -10, 10);
     this.center = new THREE.Vector2();
     this.viewH = 240;
@@ -42,7 +44,7 @@ export class StarMapView {
     const dust = new THREE.BufferGeometry();
     dust.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.scene.add(
-      new THREE.Points(dust, new THREE.PointsMaterial({ color: 0x334466, size: 1.5 * pixelRatio, sizeAttenuation: false })),
+      new THREE.Points(dust, new THREE.PointsMaterial({ color: 0x3a3e44, size: 1.5 * pixelRatio, sizeAttenuation: false })),
     );
 
     // Edges
@@ -65,7 +67,7 @@ export class StarMapView {
     this.nodes = galaxy.systems.map((s) => {
       let m;
       if (s.terminus) {
-        m = neon('terminus', SHAPES.terminus, 0xffd966, 0.5);
+        m = solid('terminus', SHAPES.terminus, 0xd9b45a, { depth: 1.5 });
       } else {
         m = new THREE.Mesh(circle, new THREE.MeshBasicMaterial({ color: tierColor(s.tier) }));
       }
@@ -83,8 +85,8 @@ export class StarMapView {
       return m;
     };
     this.currentRing = ring(5, 5.8, 0xffffff);
-    this.selectRing = ring(7, 7.6, 0x33ffee);
-    this.contractRings = [0, 1, 2].map(() => ring(5, 5.5, 0x33ffee));
+    this.selectRing = ring(7, 7.6, 0xf2a541);
+    this.contractRings = [0, 1, 2].map(() => ring(5, 5.5, 0xf2a541));
 
     this.labels = new Map();
   }
@@ -119,7 +121,7 @@ export class StarMapView {
       if (!c) return;
       const d = sys[c.dest];
       r.position.set(d.x, d.y, 0.5);
-      r.material.color.set(c.difficulty > rating ? 0xff3355 : 0x33ffee);
+      r.material.color.set(routeDanger(c.difficulty, rating).color);
     });
     const sel = selected != null ? sys[selected] : null;
     this.selectRing.visible = !!sel;

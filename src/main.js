@@ -22,7 +22,7 @@ class App {
     this.composer = new EffectComposer(this.renderer);
     this.composer.setPixelRatio(this.pixelRatio);
     this.renderPass = new RenderPass(new THREE.Scene(), new THREE.Camera());
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.1, 0.5, 0.08);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.4, 0.72);
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());

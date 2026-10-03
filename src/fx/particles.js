@@ -57,9 +57,12 @@ export class Particles {
     }
   }
 
+  // Fireball plus slower-fading debris in the wreck's hull color.
   explode(x, y, color, size = 1) {
-    this.emit(x, y, Math.round(18 * size), color, { speed: 30 * Math.sqrt(size), life: 0.8 });
-    this.emit(x, y, Math.round(8 * size), 0xffffff, { speed: 18 * Math.sqrt(size), life: 0.45 });
+    const k = Math.sqrt(size);
+    this.emit(x, y, Math.round(14 * size), 0xff7a2a, { speed: 28 * k, life: 0.8 });
+    this.emit(x, y, Math.round(7 * size), 0xffd88a, { speed: 15 * k, life: 0.45 });
+    this.emit(x, y, Math.round(7 * size), tmp.set(color).multiplyScalar(1.8).getHex(), { speed: 36 * k, life: 1.2, drag: 1.2 });
   }
 
   update(dt) {
