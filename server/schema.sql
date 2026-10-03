@@ -10,9 +10,11 @@ CREATE TABLE IF NOT EXISTS runs (
   deaths INT UNSIGNED NOT NULL,
   deliveries INT UNSIGNED NOT NULL,
   seed BIGINT NOT NULL,
+  status VARCHAR(8) NOT NULL DEFAULT 'done',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL,
-  UNIQUE KEY run_id (run_id)
+  UNIQUE KEY run_id (run_id),
+  KEY status_updated (status, updated_at)
 );
 
 CREATE TABLE IF NOT EXISTS rate_hits (
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS party_rooms (
   host_token CHAR(32) NOT NULL,
   host_peer CHAR(8) NOT NULL,
   escorts TEXT NOT NULL,
+  frame MEDIUMTEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   touched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY touched (touched_at)
@@ -55,3 +58,8 @@ CREATE TABLE IF NOT EXISTS party_live (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY room_updated (room, updated_at)
 );
+
+-- Existing Plesk DBs: run these after pull if the columns are missing.
+-- ALTER TABLE party_rooms ADD COLUMN frame MEDIUMTEXT NULL;
+-- ALTER TABLE runs ADD COLUMN status VARCHAR(8) NOT NULL DEFAULT 'done';
+-- ALTER TABLE runs ADD KEY status_updated (status, updated_at);

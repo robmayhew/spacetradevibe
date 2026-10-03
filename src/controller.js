@@ -2,6 +2,7 @@ import './style.css';
 import { CALLSIGN_RE, ensureCallsign, saveCallsign } from './score.js';
 import { partyPost } from './party/api.js';
 import { escortHex } from './party/colors.js';
+import { EscortArena } from './party/screen.js';
 
 let room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
 const $ = (s) => document.querySelector(s);
@@ -15,11 +16,33 @@ const stick = $('#stick');
 const knob = stick.querySelector('.knob');
 const fireBtn = $('#fire');
 const chip = $('.ship-chip');
+const keysHint = $('.keys-hint');
+const arenaEl = $('#arena');
+
+const KEY_AXIS = {
+  KeyW: [0, 1],
+  ArrowUp: [0, 1],
+  KeyS: [0, -1],
+  ArrowDown: [0, -1],
+  KeyA: [-1, 0],
+  ArrowLeft: [-1, 0],
+  KeyD: [1, 0],
+  ArrowRight: [1, 0],
+};
+const KEY_CODES = new Set([...Object.keys(KEY_AXIS), 'Space']);
 
 const pad = { mx: 0, my: 0, fire: false };
+const keys = new Set();
 let session;
 let pollTimer = 0;
 let inputTimer = 0;
+let frameTimer = 0;
+let arena = null;
+let useScreen = false;
+
+function prefersScreen() {
+  return window.matchMedia('(pointer: fine)').matches && window.innerWidth >= 900;
+}
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -42,6 +65,51 @@ function paintShip(color) {
   knob.style.boxShadow = `0 0 14px ${hex}`;
 }
 
+function applyPadFromKeys() {
+  if (!useScreen) return;
+  let mx = 0;
+  let my = 0;
+  for (const code of keys) {
+    const a = KEY_AXIS[code];
+    if (!a) continue;
+    mx += a[0];
+    my += a[1];
+  }
+  const len = Math.hypot(mx, my) || 1;
+  pad.mx = mx ? mx / len : 0;
+  pad.my = my ? my / len : 0;
+  pad.fire = keys.has('Space');
+  arena?.setInput(pad.mx, pad.my);
+}
+
+function startKeys() {
+  window.addEventListener('keydown', (e) => {
+    if (!KEY_CODES.has(e.code)) return;
+    if (!e.repeat) keys.add(e.code);
+    e.preventDefault();
+    applyPadFromKeys();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (!KEY_CODES.has(e.code)) return;
+    keys.delete(e.code);
+    e.preventDefault();
+    applyPadFromKeys();
+  });
+  window.addEventListener('blur', () => {
+    keys.clear();
+    applyPadFromKeys();
+  });
+}
+
+function showArena(on) {
+  document.body.classList.toggle('screen-mode', useScreen);
+  document.body.classList.toggle('waiting', !on);
+  arenaEl.classList.toggle('hidden', !on);
+  keysHint.classList.toggle('hidden', !useScreen);
+  if (on && useScreen && !arena) arena = new EscortArena(arenaEl);
+  else if (on) arena?.resize();
+}
+
 function leave() {
   if (!session) return;
   navigator.sendBeacon?.(
@@ -55,16 +123,23 @@ async function join(callsign) {
   session = await partyPost({ action: 'join', room, callsign });
   paintShip(session.color);
   setStatus('Linked · standing by');
-  controls.classList.remove('hidden');
-  startPad();
+  if (useScreen) {
+    startKeys();
+    showArena(false);
+  } else {
+    controls.classList.remove('hidden');
+    startPad();
+  }
   await sendInput();
   pollTimer = window.setInterval(poll, 100);
-  inputTimer = window.setInterval(sendInput, 100);
+  inputTimer = window.setInterval(sendInput, useScreen ? 50 : 100);
+  if (useScreen) frameTimer = window.setInterval(pollFrame, 100);
   window.addEventListener('pagehide', leave);
 }
 
 async function sendInput() {
   if (!session) return;
+  if (useScreen) applyPadFromKeys();
   try {
     await partyPost({
       action: 'input',
@@ -87,16 +162,33 @@ async function poll() {
     const data = await partyPost({ action: 'poll', room: session.room, token: session.token });
     if (typeof data.color === 'number') paintShip(data.color);
     if (data.mode === 'travel') {
-      setStatus('In combat');
+      setStatus(useScreen ? 'In combat · WASD move · Space fire' : 'In combat');
       setHull(data.hull ?? 0, data.maxHull ?? 0);
     } else {
       setStatus('Linked · standing by');
       hullMeter.classList.add('hidden');
+      if (useScreen) showArena(false);
     }
   } catch (err) {
     if (err.status === 404 || err.status === 403) {
       setStatus(err.message || 'Captain left. Scan the QR again.');
     }
+  }
+}
+
+async function pollFrame() {
+  if (!session || !useScreen) return;
+  try {
+    const data = await partyPost({ action: 'frame', room: session.room, token: session.token });
+    if (data.frame) {
+      showArena(true);
+      arena?.applyFrame(data.frame, session.peer || data.peer);
+      if (data.frame.wt) setStatus(data.frame.wt);
+    } else {
+      showArena(false);
+    }
+  } catch {
+    /* keep the last frame if the poll blips */
   }
 }
 
@@ -155,6 +247,8 @@ function startPad() {
 }
 
 const roomInput = $('#room');
+const stickOnly = $('#stick-only');
+stickOnly.checked = !prefersScreen();
 $('#callsign').value = ensureCallsign();
 form.classList.remove('hidden');
 if (/^[A-Z0-9]{5}$/.test(room)) {
@@ -179,6 +273,7 @@ form.addEventListener('submit', async (e) => {
   }
   room = code;
   saveCallsign(callsign);
+  useScreen = !stickOnly.checked;
   form.classList.add('hidden');
   try {
     await join(callsign);

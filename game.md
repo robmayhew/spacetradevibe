@@ -84,6 +84,17 @@ The game also pauses automatically if the window loses focus.
 
 **Pause menu:** Resume, or **Retreat to origin**. Retreating forfeits the contract and bounties but costs no fee. Hull damage is kept.
 
+## Escorts
+
+The captain's screen shows a QR code and a 5-character room code. Up to four helpers can join at `/controller.html`. They fly weaker ships in combat only (pulse laser at 20% of the captain's bolt damage). An escort exploding does not end the flight.
+
+- **Phone:** virtual stick and fire.
+- **Laptop:** the same combat arena, **WASD / arrows** to move, **Space** to fire. Station screens and docking stay on the captain's machine.
+
+## Leaderboard
+
+Lane Records lists **In flight** runs while the captain is still playing, and **Arrived** after they submit a Terminus delivery. Score ranking includes open runs. Time ranking is finished runs only. An in-flight row drops off if it is not updated for 15 minutes.
+
 ## Docking / Undocking at Stations
 
 Each docking and undocking is a mini-game. Every flight is: **undock** at the origin → **travel** waves → **dock** at the destination.

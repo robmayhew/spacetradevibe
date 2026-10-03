@@ -35,6 +35,8 @@ switch ($action) {
         json_out(party_drop($pdo, $body));
     case 'signal':
         json_out(party_signal($pdo, $body));
+    case 'frame':
+        json_out(party_frame($pdo, $body));
     default:
         json_error(400, 'Unknown action.');
 }
@@ -352,6 +354,36 @@ function party_drop(PDO $pdo, array $body): array {
     save_escorts($pdo, $code, $escorts);
     delete_live($pdo, $code, $peer);
     return ['ok' => true];
+}
+
+function party_frame(PDO $pdo, array $body): array {
+    $code = room_code($body);
+    $token = (string) ($body['token'] ?? '');
+    $room = load_room($pdo, $code);
+    $who = auth_room($room, $token);
+    if (array_key_exists('frame', $body)) {
+        if ($who['role'] !== 'host') json_error(403, 'Only the host can send a frame.');
+        if ($body['frame'] === null) {
+            $pdo->prepare('UPDATE party_rooms SET frame = NULL, touched_at = NOW() WHERE code = ?')->execute([$code]);
+            return ['ok' => true];
+        }
+        $json = json_encode($body['frame']);
+        if ($json === false || strlen($json) > 24576) {
+            json_error(400, 'Frame is too large.');
+        }
+        $pdo->prepare('UPDATE party_rooms SET frame = ?, touched_at = NOW() WHERE code = ?')->execute([$json, $code]);
+        return ['ok' => true];
+    }
+    if ($who['role'] !== 'escort') json_error(403, 'Only an escort can read a frame.');
+    $st = $pdo->prepare('SELECT frame FROM party_rooms WHERE code = ?');
+    $st->execute([$code]);
+    $raw = $st->fetchColumn();
+    $frame = null;
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) $frame = $decoded;
+    }
+    return ['ok' => true, 'frame' => $frame, 'peer' => $who['peer']];
 }
 
 function party_signal(PDO $pdo, array $body): array {
