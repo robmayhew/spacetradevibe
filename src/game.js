@@ -9,9 +9,9 @@ import { renderLeaderboard } from './ui/leaderboard.js';
 import { StationScreen } from './ui/station.js';
 import {
   CALLSIGN_RE,
+  ensureCallsign,
   formatRunTime,
   hasRunClock,
-  loadCallsign,
   MIN_TIME_MS,
   runScore,
   saveCallsign,
@@ -72,10 +72,12 @@ export class Game {
     renderMenu(this.app.ui, {
       hasSave: !!load(),
       muted: this.app.audio.muted,
+      callsign: ensureCallsign(),
       onNew: () => this.newGame(),
       onContinue: () => this.continueGame(),
       onToggleMute: () => this.app.audio.toggleMute(),
       onLeaderboard: () => this.showLeaderboard(),
+      onCallsign: (name) => saveCallsign(name),
     });
   }
 
@@ -256,7 +258,7 @@ export class Game {
     const score = runScore(s.stats);
     const timed = hasRunClock(s);
     const timeLabel = timed ? formatRunTime(s.runMs) : '—';
-    const priorName = loadCallsign();
+    const priorName = ensureCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
         <h1 class="logo">TERMINUS<span>REACHED</span></h1>

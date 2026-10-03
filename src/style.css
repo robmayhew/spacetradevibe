@@ -53,6 +53,12 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .logo span { font-size: 0.42em; letter-spacing: 0.55em; margin-right: -0.55em; color: var(--text); text-shadow: 0 3px 0 #2a2620; }
 .tagline { color: var(--muted); font-size: 20px; margin: 0; text-align: center; max-width: 620px; }
 .menu-buttons { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.callsign-field, .join-code label { width: min(260px, 86vw); }
+.callsign-field input, .join-code input { width: 100%; margin-top: 6px; font-family: var(--display); font-size: 16px; letter-spacing: 0.08em; color: var(--text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; }
+.callsign-field input:focus, .join-code input:focus { outline: none; border-color: var(--cyan); }
+.callsign-hint, .join-hint { margin: -4px 0 0; text-align: center; max-width: 280px; }
+.join-code { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(260px, 86vw); }
+.join-code .btn { min-width: 0; width: 100%; }
 .confirm { text-align: center; }
 .confirm p { margin: 0 0 8px; color: #e08a80; }
 .confirm .btn { margin: 0 4px; }

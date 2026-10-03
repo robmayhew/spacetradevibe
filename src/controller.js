@@ -1,9 +1,9 @@
 import './style.css';
-import { CALLSIGN_RE } from './score.js';
+import { CALLSIGN_RE, ensureCallsign, saveCallsign } from './score.js';
 import { partyPost } from './party/api.js';
 import { escortHex } from './party/colors.js';
 
-const room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
+let room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
 const $ = (s) => document.querySelector(s);
 const statusEl = $('.status');
 const form = $('.join-form');
@@ -154,35 +154,36 @@ function startPad() {
   fireBtn.addEventListener('pointerleave', fireOff);
 }
 
-if (!/^[A-Z0-9]{5}$/.test(room)) {
-  setStatus('Scan the QR on the captain’s screen.');
-} else {
-  try {
-    const saved = localStorage.getItem('txl-escort-callsign') || 'ESCORT';
-    $('#callsign').value = saved;
-  } catch {
-    /* ignore */
-  }
+const roomInput = $('#room');
+$('#callsign').value = ensureCallsign();
+form.classList.remove('hidden');
+if (/^[A-Z0-9]{5}$/.test(room)) {
+  roomInput.value = room;
   setStatus('Enter a callsign to join.');
-  form.classList.remove('hidden');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const callsign = $('#callsign').value.trim() || 'ESCORT';
-    if (!CALLSIGN_RE.test(callsign)) {
-      setStatus('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
-      return;
-    }
-    try {
-      localStorage.setItem('txl-escort-callsign', callsign);
-    } catch {
-      /* ignore */
-    }
-    form.classList.add('hidden');
-    try {
-      await join(callsign);
-    } catch (err) {
-      form.classList.remove('hidden');
-      setStatus(err.message || 'Could not join. Check the room code and try again.');
-    }
-  });
+} else {
+  $('.room-fields').classList.remove('hidden');
+  setStatus('Enter the room code from the captain’s screen.');
 }
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = (roomInput.value || room).trim().toUpperCase();
+  const callsign = $('#callsign').value.trim();
+  if (!/^[A-Z0-9]{5}$/.test(code)) {
+    setStatus('Enter the 5-character code from the captain’s screen.');
+    return;
+  }
+  if (!CALLSIGN_RE.test(callsign)) {
+    setStatus('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
+    return;
+  }
+  room = code;
+  saveCallsign(callsign);
+  form.classList.add('hidden');
+  try {
+    await join(callsign);
+  } catch (err) {
+    form.classList.remove('hidden');
+    setStatus(err.message || 'Could not join. Check the room code and try again.');
+  }
+});

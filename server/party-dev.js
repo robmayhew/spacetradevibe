@@ -231,50 +231,198 @@ export function createPartyStore() {
   };
 }
 
-export function partyDevPlugin() {
-  const store = createPartyStore();
-
-  function isParty(req) {
-    const raw = req.originalUrl || req.url || '';
-    let pathname = raw.split('?')[0];
-    try {
-      pathname = new URL(raw, 'http://party.local').pathname;
-    } catch {
-      /* keep split path */
-    }
-    return pathname === '/api/party.php';
+function pathnameOf(req) {
+  const raw = req.originalUrl || req.url || '';
+  let pathname = raw.split('?')[0];
+  try {
+    pathname = new URL(raw, 'http://party.local').pathname;
+  } catch {
+    /* keep split path */
   }
+  return pathname;
+}
 
-  function handleReq(req, res) {
-    if (req.method !== 'POST') {
-      res.statusCode = 405;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'POST a party action.' }));
-      return;
-    }
+function queryOf(req) {
+  const raw = req.originalUrl || req.url || '';
+  try {
+    return new URL(raw, 'http://party.local').searchParams;
+  } catch {
+    const q = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : '';
+    return new URLSearchParams(q);
+  }
+}
+
+function jsonErr(res, status, error) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ error }));
+}
+
+function jsonOk(res, data) {
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString('utf8');
-        const body = raw ? JSON.parse(raw) : {};
-        const data = store.handle(body);
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify(data));
-      } catch (e) {
-        res.statusCode = e.status || 500;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: e.message || 'Party error.' }));
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        const err = new Error('Expected JSON.');
+        err.status = 400;
+        reject(err);
       }
     });
+    req.on('error', reject);
+  });
+}
+
+export function createBoardStore() {
+  const runs = new Map();
+
+  function intField(body, key, max) {
+    if (!(key in body) || !Number.isFinite(Number(body[key]))) {
+      const err = new Error(`Invalid ${key}.`);
+      err.status = 400;
+      throw err;
+    }
+    const n = Math.trunc(Number(body[key]));
+    if (n < 0 || n > max) {
+      const err = new Error(`Invalid ${key}.`);
+      err.status = 400;
+      throw err;
+    }
+    return n;
+  }
+
+  return {
+    board(sort) {
+      const rows = [...runs.values()].sort((a, b) =>
+        sort === 'time'
+          ? a.time_ms - b.time_ms || b.score - a.score
+          : b.score - a.score || a.time_ms - b.time_ms,
+      );
+      return {
+        rows: rows.slice(0, 20).map((r, i) => ({
+          callsign: r.callsign,
+          score: r.score,
+          time_ms: r.time_ms,
+          rank: i + 1,
+        })),
+      };
+    },
+    submit(body) {
+      const callsign = String(body.callsign || '').trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9 -]{0,14}[A-Za-z0-9]$/.test(callsign)) {
+        const err = new Error('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
+        err.status = 400;
+        throw err;
+      }
+      const runId = String(body.run_id || '');
+      if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runId)) {
+        const err = new Error('Invalid run.');
+        err.status = 400;
+        throw err;
+      }
+      const score = Math.trunc(Number(body.score ?? 0));
+      if (!Number.isInteger(score) || score < -10000000 || score >= 50000000) {
+        const err = new Error('Invalid score.');
+        err.status = 400;
+        throw err;
+      }
+      const timeMs = intField(body, 'time_ms', 7 * 24 * 60 * 60 * 1000);
+      if (timeMs < 3 * 60 * 1000) {
+        const err = new Error('Runs under 3 minutes are not posted.');
+        err.status = 400;
+        throw err;
+      }
+      const earned = intField(body, 'earned', 49999999);
+      const kills = intField(body, 'kills', 100000);
+      const bosses = intField(body, 'bosses', 1000);
+      const deaths = intField(body, 'deaths', 1000);
+      const deliveries = intField(body, 'deliveries', 10000);
+      const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : 0;
+      const expected = earned + kills * 50 + bosses * 2500 - deaths * 10000;
+      if (score !== expected) {
+        const err = new Error('Invalid score.');
+        err.status = 400;
+        throw err;
+      }
+      const row = { run_id: runId, callsign, score, time_ms: timeMs, earned, kills, bosses, deaths, deliveries, seed };
+      runs.set(runId, row);
+      const all = [...runs.values()];
+      const rankScore = all.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
+      const rankTime = all.filter((r) => r.time_ms < timeMs || (r.time_ms === timeMs && r.score > score)).length + 1;
+      return { ok: true, rank_score: rankScore, rank_time: rankTime };
+    },
+  };
+}
+
+export function partyDevPlugin() {
+  const store = createPartyStore();
+  const board = createBoardStore();
+
+  function isParty(req) {
+    return pathnameOf(req) === '/api/party.php';
+  }
+
+  function isBoard(req) {
+    return pathnameOf(req) === '/api/board.php';
+  }
+
+  function isScore(req) {
+    return pathnameOf(req) === '/api/score.php';
+  }
+
+  function isApi(req) {
+    return isParty(req) || isBoard(req) || isScore(req);
+  }
+
+  function handleParty(req, res) {
+    if (req.method !== 'POST') {
+      jsonErr(res, 405, 'POST a party action.');
+      return;
+    }
+    readBody(req)
+      .then((body) => jsonOk(res, store.handle(body)))
+      .catch((e) => jsonErr(res, e.status || 500, e.message || 'Party error.'));
+  }
+
+  function handleBoard(req, res) {
+    if (req.method !== 'GET') {
+      jsonErr(res, 405, 'GET the board.');
+      return;
+    }
+    const sort = queryOf(req).get('sort') === 'time' ? 'time' : 'score';
+    jsonOk(res, board.board(sort));
+  }
+
+  function handleScore(req, res) {
+    if (req.method !== 'POST') {
+      jsonErr(res, 405, 'POST a finished run.');
+      return;
+    }
+    readBody(req)
+      .then((body) => jsonOk(res, board.submit(body)))
+      .catch((e) => jsonErr(res, e.status || 500, e.message || 'Score error.'));
+  }
+
+  function handleReq(req, res) {
+    if (isParty(req)) handleParty(req, res);
+    else if (isBoard(req)) handleBoard(req, res);
+    else if (isScore(req)) handleScore(req, res);
   }
 
   return {
     name: 'party-dev-api',
     configureServer(server) {
       const handler = (req, res, next) => {
-        if (!isParty(req)) {
+        if (!isApi(req)) {
           next?.();
           return;
         }
@@ -289,7 +437,7 @@ export function partyDevPlugin() {
         http.__txlParty = true;
         http.removeAllListeners('request');
         http.on('request', (req, res) => {
-          if (isParty(req)) {
+          if (isApi(req)) {
             handleReq(req, res);
             return;
           }
