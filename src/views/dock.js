@@ -659,7 +659,7 @@ export class DockView {
   }
 
   bump(x, y) {
-    if (this.bumpCd > 0) return;
+    if (this.bumpCd > 0 || this.app.cheats.god) return;
     this.bumpCd = 0.5;
     this.bumps++;
     const p = this.player;

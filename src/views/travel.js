@@ -110,7 +110,7 @@ export class TravelView {
     this.done = false;
 
     const waveCount = isFinal ? 5 : contract.waves;
-    this.hasBoss = isFinal || Math.random() < 0.15 + 0.035 * this.d;
+    this.hasBoss = contract.forceBoss ?? (isFinal || Math.random() < 0.15 + 0.035 * this.d);
     this.waves = planWaves(this.d, waveCount);
     this.waveIndex = -1;
     this.setPhase('intro');
@@ -397,7 +397,7 @@ export class TravelView {
 
   hitPlayer(dmg) {
     const p = this.player;
-    if (p.invuln > 0 || this.phase === 'dead' || this.phase === 'outro') return;
+    if (p.invuln > 0 || this.phase === 'dead' || this.phase === 'outro' || this.app.cheats.god) return;
     const absorbed = Math.min(p.shield, dmg);
     p.shield -= absorbed;
     const hullDmg = dmg - absorbed;

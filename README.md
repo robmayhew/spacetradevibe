@@ -17,6 +17,21 @@ npm run dev
 | 1–4, Q / E | Select weapon |
 | Esc / P | Pause (retreat option) |
 
+## Test console
+
+Press <kbd>`</kbd> (backtick) to open the test console. It is always available under `npm run dev`; on a deployed build add `?console` to the URL. Type `help` for the full list; Tab completes, ↑/↓ recall history.
+
+| Area | Commands |
+| --- | --- |
+| Ship & economy | `credits 5000` / `credits +500`, `repair`, `upgrade <system\|all> <level\|max>`, `rating 6`, `weapon <id\|all>`, `god` |
+| Map | `goto <id\|name>`, `terminus`, `reveal`, `systems`, `contracts` |
+| Flights | `fly [difficulty] [waves] [boss\|noboss] [nodock]`, `dock [tier] [undock]` |
+| In combat | `kill`, `skip`, `win`, `die`, `spawn <type> [count]` |
+| Docking | `land`, `spin <rad/s>` |
+| Tuning | `speed <0-8>` (0 freezes), `tune ENEMIES.scout.fire.homing 2` (live, resets on reload), `status` |
+
+Any command that changes the game marks the save as a **test run**, which can't be posted to the leaderboard.
+
 ## Layout
 
 - `src/data.js` holds all tuning: upgrade costs and scaling, weapons, enemies and goods.
