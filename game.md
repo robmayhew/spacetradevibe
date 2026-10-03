@@ -38,7 +38,7 @@ The screen has three tabs. A footer on every tab shows the selected contract and
 - the destination, and whether you have visited it
 - the route difficulty (1–10)
 - the good to carry and the pay per unit
-- the distance and roughly how many waves to expect `q  `
+- the distance and roughly how many waves to expect
 - the total payout: cargo units × pay per unit
 
 Contracts whose difficulty is above your Ship Rating are **locked**. New contracts are generated every time you dock.
@@ -58,7 +58,7 @@ Contracts whose difficulty is above your Ship Rating are **locked**. New contrac
 - Combat is arcade style against waves of enemies. Weapon damage removes enemy HP until the enemy is destroyed.
 - Each trip is **2–5 waves**. Longer routes tend to have more waves.
 - A **boss** (capital ship) may appear after the last wave. The chance is 15% + 3.5% per difficulty level. The route into the Terminus always has 5 waves and a boss.
-- Once the route is clear, a station slides into view and the ship docks.
+- Once the route is clear, the ship jumps toward the destination and the docking mini-game begins.
 
 **HUD:** hull and shield bars, wave counter, boss health bar, the route and its difficulty, bounty earned so far, and the weapon slots.
 
@@ -76,11 +76,34 @@ The game also pauses automatically if the window loses focus.
 
 **Pause menu:** Resume, or **Retreat to origin**. Retreating forfeits the contract and bounties but costs no fee. Hull damage is kept.
 
+## Docking / Undocking at Stations
+
+Each docking and undocking is a mini-game. Every flight is: **undock** at the origin → **travel** waves → **dock** at the destination.
+
+- **Undocking:** the ship starts on its assigned pad. You must fly clear of the station and through the **departure gate** at the top of the screen.
+- **Docking:** the ship arrives from the bottom of the screen and is assigned a numbered pad. To land, fly onto the pad and **hold steady** (moving slowly) for 1.5 seconds. A ring around the pad fills as you land. Drifting off the pad drains the ring.
+- **Flying:** same controls, and the ship still never turns, but it has **inertia**. It drifts, so you must brake by thrusting the other way. Small puffs from the thrusters show which way you're pushing. A faint guide line points to the pad or gate.
+- **Hazards:** the station hub, its arms, traffic ships and maintenance drones are all solid. Hitting one hard is a **bump**: it costs 4% of max hull and bounces you off. Docking can't destroy the ship, since hull stops at 1.
+- **Precision docking bonus:** landing with **no bumps** pays a bonus of 10% of the cargo payout.
+- There is no time limit. The HUD shows elapsed time and your bump count.
+
+Each system is a lively environment with other ships coming and going and ongoing maintenance activity:
+
+- **Station layout:** each station has its own layout: a central hub with arms leading out to 3–6 numbered landing pads. It is the same every visit and is based on the station's tier color. A planet hangs in the background.
+- **Traffic:**
+  - Shuttles, tugs and freighters fly in, land on free pads, wait, then undock and leave.
+  - Other ships cross the screen without stopping.
+  - Traffic never uses your assigned pad.
+- **Maintenance:** drones move along the station arms and stop to weld, throwing off sparks. Warning lights blink on the hub and pads.
+- **Difficulty by tier:**
+  - Higher-tier stations have more pads and more traffic, up to 8 ships.
+  - From **tier 4**, the whole station slowly **rotates**, so the pads move and landing gets harder.
+
 ## End of a Trip
 
 | Outcome | Result |
 | --- | --- |
-| **Delivered** | Paid for the cargo plus bounties for every kill. Hull damage carries over. The destination becomes your current station. |
+| **Delivered** | Paid for the cargo plus bounties for every kill, plus the precision docking bonus if you docked without bumps. Hull damage (including bumps while docking and undocking) carries over. The destination becomes your current station. |
 | **Destroyed** | Cargo and bounties are lost. Pay a tow fee (40 cr × 1.55^(difficulty−1), capped at the credits you have). The ship is rebuilt to full hull back at the origin station. |
 | **Retreated** | Back at the origin station, contract forfeited, no fee. |
 
@@ -153,7 +176,7 @@ Below 50% HP it gets faster and its spreads get wider.
 
 # Route Difficulty & Economy
 
-*Route Difficulty* Each route has a difficulty from 1 to 10, equal to the higher tier of its two stations. Level 1 can be done with the starting ship. After that, the Ship Rating gate means you must trade and upgrade before taking harder routes.
+**Route Difficulty** Each route has a difficulty from 1 to 10, equal to the higher tier of its two stations. Level 1 can be done with the starting ship. After that, the Ship Rating gate means you must trade and upgrade before taking harder routes.
 
 **Pay per unit:** 1.6 × good base price × 1.55^(d−1) × random 0.85–1.2 × (1 + distance/300).
 
@@ -178,10 +201,10 @@ With this tuning, reaching each new rating takes roughly 2–3 deliveries.
 
 # Map
 
-- **100 star systems** generated from a random seed: 10 tiers of 10 systems laid out left to right.
-- The last tier has 9 systems plus the **Terminus**, the final destination at the far right, where the game is won.
+- **30 star systems** generated from a random seed: 10 tiers of 3 systems laid out left to right.
+- The last tier has 3 systems plus the **Terminus**, the final destination at the far right, where the game is won. That makes 31 stations in total.
 - Each station links to 1–3 others. Links only join the same or neighboring tiers, so difficulty rises gradually.
-- The map is always fully connected. The shortest path from start to Terminus is about 30 jumps.
+- The map is always fully connected. The shortest path from start to Terminus is 13–22 jumps, usually about 18.
 - You start at the leftmost tier-1 system.
 
 ## Victory
@@ -190,7 +213,9 @@ Delivering to the Terminus shows a victory screen with your stats: deliveries, c
 
 # Open Questions / Ideas for Review
 
-- Is ~30 jumps and ~2–3 deliveries per rating the right length, or should the run be shorter?
+- Is ~18 jumps and ~2–3 deliveries per rating the right length?
+- Docking happens twice per delivery (roughly 50+ times per game). Should there be a paid **autopilot** option to skip it once you've mastered it?
+- Is 4% hull per bump too punishing, or not punishing enough? Should the precision bonus be bigger?
 - Should the Ship Rating be a hard lock, or only a warning ("under-equipped")?
 - Is the loss on destruction (cargo + bounties + tow fee) too harsh or too soft?
 - Should the map hide unvisited systems (fog of war) instead of showing everything?

@@ -6,6 +6,7 @@ import { SHAPES, asteroidShape, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
 import { shipStats } from '../state.js';
 import { TravelHUD } from '../ui/hud.js';
+import { createPlayerShip } from '../fx/ship.js';
 import { rand, randInt, pick, clamp, weightedPick } from '../rng.js';
 
 const TOP = 50;
@@ -44,7 +45,8 @@ function planWaves(d, count) {
 }
 
 export class TravelView {
-  constructor(app, { state, from, to, contract, isFinal, onDone }) {
+  constructor(app, { state, from, to, contract, isFinal, hull, onDone }) {
+    this.toName = to;
     this.app = app;
     this.audio = app.audio;
     this.input = app.input;
@@ -67,7 +69,7 @@ export class TravelView {
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     this.player = {
       x: 0, y: -62,
-      hull: Math.min(state.hull, stats.maxHull), maxHull: stats.maxHull,
+      hull: Math.min(hull ?? state.hull, stats.maxHull), maxHull: stats.maxHull,
       shield: stats.maxShield, maxShield: stats.maxShield,
       invuln: 0, regenDelay: 0, cooldown: 0,
       weapon: this.owned.includes(state.weapon) ? state.weapon : 'pulse',
@@ -104,19 +106,10 @@ export class TravelView {
   }
 
   buildPlayerMesh() {
-    const g = new THREE.Group();
-    g.add(neon('player', SHAPES.player, 0x33ffee, 0.35));
-    this.flame = new THREE.Mesh(
-      new THREE.ShapeGeometry(new THREE.Shape(SHAPES.flame.map(([x, y]) => new THREE.Vector2(x, y)))),
-      new THREE.MeshBasicMaterial({ color: 0xff9933, transparent: true, opacity: 0.9 }),
-    );
-    this.flame.position.y = -2.8;
-    g.add(this.flame);
-    this.shieldRing = new THREE.Mesh(
-      new THREE.RingGeometry(4.3, 4.7, 40),
-      new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.4, depthWrite: false }),
-    );
-    g.add(this.shieldRing);
+    const ship = createPlayerShip();
+    const g = ship.group;
+    this.flame = ship.flame;
+    this.shieldRing = ship.shieldRing;
     this.beamMesh = new THREE.Group();
     const outer = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: WEAPONS.beam.color, transparent: true, opacity: 0.35 }));
     outer.scale.x = 1.4;
@@ -156,7 +149,7 @@ export class TravelView {
     if (this.paused) return;
 
     this.phaseT += dt;
-    this.stars.update(dt, this.phase === 'outro' ? 8 : 28);
+    this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
     this.updatePhase(dt);
 
     const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
@@ -769,45 +762,29 @@ export class TravelView {
     this.eShots = keep(this.eShots);
   }
 
-  // ---------------------------------------------------------------- docking
+  // ---------------------------------------------------------------- arrival
 
+  // Route clear: the ship punches forward toward the destination; docking itself
+  // is the separate DockView mini-game.
   startOutro() {
     if (this.phase === 'outro') return;
     this.setPhase('outro');
     this.clearEnemyShots();
     this.beamMesh.visible = false;
     this.audio.beam(false);
-    this.hud.banner('Route clear', 'Docking…');
-    this.station = new THREE.Group();
-    const outer = neon('station', SHAPES.station, 0x33ffee, 0.08);
-    const inner = neon('stationInner', SHAPES.stationInner, 0xffcc33, 0.12);
-    this.station.add(outer, inner);
-    this.stationInner = inner;
-    this.station.position.set(0, 80, -1);
-    this.scene.add(this.station);
-    this.outroStart = { x: this.player.x, y: this.player.y };
+    this.hud.banner('Route clear', `Approaching ${this.toName}`);
+    this.outroV = 0;
   }
 
   updateOutro(dt) {
-    const t = this.phaseT;
-    const sy = 80 - 60 * Math.min(1, t / 2.2);
-    this.station.position.y = sy;
-    this.station.rotation.z += dt * 0.3;
-    this.stationInner.rotation.z -= dt * 0.8;
-    if (t > 1.8) {
-      const k = Math.min(1, (t - 1.8) / 1.6);
-      const ease = k * k * (3 - 2 * k);
-      this.player.x = this.outroStart.x * (1 - ease);
-      this.player.y = this.outroStart.y + (sy - this.outroStart.y) * ease;
-      this.playerMesh.scale.setScalar(1 - ease * 0.7);
+    const p = this.player;
+    if (this.phaseT > 1.4) {
+      this.outroV += 110 * dt;
+      p.y += this.outroV * dt;
+      p.x *= 1 - Math.min(1, dt * 1.5);
+      this.particles.emit(p.x, p.y - 3.4, 3, 0x33ffee, { speed: 10, angle: -Math.PI / 2, spread: 0.4, life: 0.5 });
     }
-    if (t > 3.5 && !this.dockSounded) {
-      this.dockSounded = true;
-      this.audio.play('dock');
-    }
-    if (t > 4.4) {
-      this.finish({ success: true });
-    }
+    if (this.phaseT > 3.2) this.finish({ success: true });
   }
 
   finish(result) {

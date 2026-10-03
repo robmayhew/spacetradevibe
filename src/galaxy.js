@@ -1,12 +1,13 @@
 import { RNG } from './rng.js';
 
 export const TIERS = 10;
-const PER_TIER = 10;
-const COL_W = 110;
-const HEIGHT = 300;
-const MIN_SPACING = 24;
+const PER_TIER = 3;
+const COL_W = 90;
+const HEIGHT = 160;
+const MIN_SPACING = 36;
 const MAX_LINKS = 3;
-const MAX_LINK_DIST = 95;
+const MAX_LINK_DIST = 140;
+const LOOP_LINK_DIST = 120;
 
 const SYL_A = ['Ka', 'Ve', 'Or', 'Zan', 'Tel', 'Myr', 'Ax', 'Cor', 'Dra', 'Eos', 'Fal', 'Gor', 'Hel', 'Ix', 'Jor', 'Kel', 'Lum', 'Nov', 'Pyr', 'Quin', 'Rho', 'Sol', 'Tyr', 'Ul', 'Vex', 'Xan', 'Yra', 'Zeph', 'Ar', 'Bel', 'Cy', 'Nym', 'Os', 'Pra', 'Sy', 'Thal'];
 const SYL_B = ['ra', 'on', 'is', 'ex', 'ia', 'us', 'or', 'an', 'eth', 'ul', 'ys', 'ar', 'iel', 'os', 'ion', 'ax', 'ene', 'ium', 'ara', 'ette'];
@@ -28,7 +29,7 @@ export function systemDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-// ~100 systems laid out left→right in 10 difficulty tiers, with the Terminus
+// 30 systems laid out left→right in 10 difficulty tiers of 3, plus the Terminus
 // (the win condition) at the far right. Links only join the same or adjacent
 // tiers, so route difficulty climbs gradually.
 export function generateGalaxy(seed) {
@@ -37,8 +38,7 @@ export function generateGalaxy(seed) {
   const systems = [];
 
   for (let t = 1; t <= TIERS; t++) {
-    const count = t === TIERS ? PER_TIER - 1 : PER_TIER;
-    for (let k = 0; k < count; k++) {
+    for (let k = 0; k < PER_TIER; k++) {
       let x, y;
       for (let attempt = 0; attempt < 300; attempt++) {
         x = (t - 1) * COL_W + rng.float(8, COL_W - 8);
@@ -85,7 +85,7 @@ export function generateGalaxy(seed) {
   for (let i = 0; i < systems.length; i++) {
     if (deg[i] >= 2 && !(deg[i] === 2 && rng.chance(0.3))) continue;
     const cand = pairs.find(
-      (p) => (p.i === i || p.j === i) && p.d < 80 && !linked(p.i, p.j) && deg[p.i] < MAX_LINKS && deg[p.j] < MAX_LINKS,
+      (p) => (p.i === i || p.j === i) && p.d < LOOP_LINK_DIST && !linked(p.i, p.j) && deg[p.i] < MAX_LINKS && deg[p.j] < MAX_LINKS,
     );
     if (cand) link(cand.i, cand.j);
   }

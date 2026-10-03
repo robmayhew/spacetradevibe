@@ -192,3 +192,10 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
   .modal { min-width: 0; width: calc(100vw - 32px); }
 }
 .st-header, .tabs, .st-footer { position: relative; z-index: 2; }
+
+/* Docking HUD */
+.objective { margin-top: 6px; font-family: var(--body); font-size: 18px; color: var(--text); letter-spacing: 0.02em; }
+.objective b { color: var(--cyan); }
+.dock-hud .hud-tc { top: auto; bottom: 22px; }
+.dock-hint { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 14px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold); text-shadow: 0 0 10px rgba(255, 217, 102, 0.6); opacity: 0; transition: opacity 0.2s; }
+.dock-hint.show { opacity: 1; }

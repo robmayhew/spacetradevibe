@@ -52,6 +52,13 @@ class App {
   resize() {
     this.w = window.innerWidth;
     this.h = window.innerHeight;
+    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    if (pr !== this.pixelRatio) {
+      // e.g. window dragged to a display with a different pixel density
+      this.pixelRatio = pr;
+      this.renderer.setPixelRatio(pr);
+      this.composer.setPixelRatio(pr);
+    }
     this.renderer.setSize(this.w, this.h);
     this.composer.setSize(this.w, this.h);
     this.view?.resize(this.w, this.h);

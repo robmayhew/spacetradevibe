@@ -20,9 +20,9 @@ npm run dev
 ## Layout
 
 - `src/data.js` holds all tuning: upgrade costs and scaling, weapons, enemies and goods.
-- `src/galaxy.js` builds a seeded map of 100 systems in 10 difficulty tiers, with the Terminus at the far end.
+- `src/galaxy.js` builds a seeded map of 30 systems in 10 difficulty tiers, with the Terminus at the far end.
 - `src/state.js` holds save data, the economy, contracts and ship rating.
-- `src/views/` has the Three.js scenes: `travel` (combat), `starmap`, `backdrop`.
+- `src/views/` has the Three.js scenes: `dock` (docking/undocking mini-game), `travel` (combat), `starmap`, `backdrop`.
 - `src/ui/` has the DOM screens: menu, station, and the in-flight HUD.
 - `src/fx/` has the neon shapes, particles and starfield.
 

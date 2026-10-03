@@ -1,5 +1,5 @@
 import { RNG } from '../rng.js';
-import { regularPolygon, starPolygon } from './neon.js';
+import { starPolygon } from './neon.js';
 
 // Enemy shapes point down (toward the player). Units are world units (view is 100 tall).
 export const SHAPES = {
@@ -15,9 +15,12 @@ export const SHAPES = {
   ],
   missile: [[0, 1.2], [0.5, -0.8], [-0.5, -0.8]],
   flame: [[0, -1.8], [0.7, 0], [-0.7, 0]],
-  station: regularPolygon(6, 14, Math.PI / 6),
-  stationInner: regularPolygon(6, 8, 0),
   terminus: starPolygon(5, 7, 3),
+  // Station traffic (point up; rotated to face their heading)
+  shuttle: [[0, 2.2], [1.3, -1.4], [0, -0.7], [-1.3, -1.4]],
+  tug: [[-1, 2], [1, 2], [2, 0.5], [2, -2], [-2, -2], [-2, 0.5]],
+  freighter: [[-1.2, 4], [1.2, 4], [1.9, 3], [1.9, -4], [-1.9, -4], [-1.9, 3]],
+  drone: [[0, 0.9], [0.9, 0], [0, -0.9], [-0.9, 0]],
 };
 
 export const ASTEROID_VARIANTS = 5;

@@ -3,10 +3,12 @@ import { newState, generateContracts, shipStats, towFee, save, load } from './st
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
 import { TravelView } from './views/travel.js';
+import { DockView } from './views/dock.js';
 import { renderMenu } from './ui/menu.js';
 import { StationScreen } from './ui/station.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
+const PRECISION_BONUS = 0.1; // share of cargo pay awarded for docking without bumps
 
 // Top-level flow: menu → station ⇄ travel → (victory).
 export class Game {
@@ -74,6 +76,8 @@ export class Game {
     this.station = new StationScreen(this, { report });
   }
 
+  // A flight is three scenes: undock at the origin, the travel waves, then dock at
+  // the destination. Hull damage carries through all three.
   launch(contract) {
     const s = this.state;
     this.station.destroy();
@@ -81,25 +85,46 @@ export class Game {
     this.app.ui.innerHTML = '';
     const from = this.galaxy.systems[s.current];
     const to = this.galaxy.systems[contract.dest];
+    this.flight = { contract, from, to, hull: s.hull };
+    this.startDock('undock', from, () => this.startTravel());
+  }
+
+  startDock(mode, system, next) {
+    this.dock = new DockView(this.app, {
+      mode, system, galaxy: this.galaxy, state: this.state, hull: this.flight.hull,
+      // Deferred so we don't tear down the view in the middle of its own update.
+      onDone: (r) => setTimeout(() => {
+        this.dock.dispose();
+        this.dock = null;
+        this.flight.hull = r.hull;
+        next(r);
+      }, 0),
+    });
+    this.app.setView(this.dock);
+  }
+
+  startTravel() {
+    const { contract, from, to } = this.flight;
     this.travel = new TravelView(this.app, {
-      state: s,
+      state: this.state,
       from: from.name,
       to: to.name,
       contract,
+      hull: this.flight.hull,
       isFinal: !!to.terminus,
-      onDone: (r) => this.finishTravel(contract, r),
+      onDone: (r) => setTimeout(() => {
+        this.travel.dispose();
+        this.travel = null;
+        if (!r.success) return this.applyTravelResult(contract, r);
+        this.flight.hull = r.hull;
+        this.startDock('dock', to, (d) => this.applyTravelResult(contract, { ...r, hull: d.hull, dockBumps: d.bumps }));
+      }, 0),
     });
     this.app.setView(this.travel);
   }
 
-  finishTravel(contract, r) {
-    // Defer so we don't tear down the travel view in the middle of its own update.
-    setTimeout(() => this.applyTravelResult(contract, r), 0);
-  }
-
   applyTravelResult(contract, r) {
-    this.travel.dispose();
-    this.travel = null;
+    this.flight = null;
     const s = this.state;
     const origin = this.galaxy.systems[s.current];
     const dest = this.galaxy.systems[contract.dest];
@@ -111,7 +136,9 @@ export class Game {
 
     if (r.success) {
       const cargoPay = contract.pay * stats.cargo;
-      const total = cargoPay + r.bounty;
+      const clean = r.dockBumps === 0;
+      const dockBonus = clean ? Math.round(cargoPay * PRECISION_BONUS) : 0;
+      const total = cargoPay + r.bounty + dockBonus;
       s.credits += total;
       s.hull = Math.max(1, Math.round(r.hull));
       s.current = dest.id;
@@ -126,6 +153,9 @@ export class Game {
         lines: [
           [`${contract.good} ×${stats.cargo} @ ${contract.pay} cr`, `+${fmt(cargoPay)} cr`, 'accent'],
           [`Bounties (${r.kills} kills${r.bossKilled ? ', capital ship' : ''})`, `+${fmt(r.bounty)} cr`, 'accent'],
+          clean
+            ? ['Precision docking bonus', `+${fmt(dockBonus)} cr`, 'accent']
+            : [`Docking (${r.dockBumps} bump${r.dockBumps === 1 ? '' : 's'})`, 'No bonus', 'warn'],
           ['Total', `+${fmt(total)} cr`, 'accent big'],
           ['Hull', `${fmt(s.hull)} / ${fmt(stats.maxHull)}`],
         ],

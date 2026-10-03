@@ -92,6 +92,10 @@ export class Sfx {
         this.noise({ dur: 0.25, vol: 0.3, freq: 800, freqEnd: 80 });
         return this.tone({ type: 'sawtooth', freq: 160, freqEnd: 60, dur: 0.2, vol: 0.12 });
       case 'shieldHit': return this.tone({ type: 'sine', freq: 1200, freqEnd: 600, dur: 0.15, vol: 0.1 });
+      case 'bump':
+        this.noise({ dur: 0.18, vol: 0.25, freq: 600, freqEnd: 80 });
+        return this.tone({ type: 'square', freq: 110, freqEnd: 70, dur: 0.12, vol: 0.1 });
+      case 'beep': return this.tone({ type: 'sine', freq: 1320, dur: 0.06, vol: 0.06 });
       case 'click': return this.tone({ type: 'square', freq: 660, dur: 0.04, vol: 0.05 });
       case 'buy':
         this.tone({ type: 'square', freq: 660, dur: 0.08, vol: 0.06 });
