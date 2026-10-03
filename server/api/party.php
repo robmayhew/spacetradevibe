@@ -17,10 +17,10 @@ $pdo = db();
 
 switch ($action) {
     case 'create':
-        party_rate($pdo, 20);
+        party_rate($pdo, 200);
         json_out(party_create($pdo));
     case 'join':
-        party_rate($pdo, 30);
+        party_rate($pdo, 400);
         json_out(party_join($pdo, $body));
     case 'input':
         json_out(party_input($pdo, $body));

@@ -2,6 +2,8 @@ import QRCode from 'qrcode/lib/browser.js';
 import { partyPost } from './api.js';
 import { escortHex } from './colors.js';
 
+const ROOM_KEY = 'txl-party-host';
+
 export class PartyHost {
   constructor(root) {
     this.root = root;
@@ -50,24 +52,19 @@ export class PartyHost {
 
   async start() {
     try {
+      const saved = loadRoom();
+      if (saved) {
+        try {
+          await partyPost({ action: 'poll', room: saved.room, token: saved.token });
+          await this.openRoom(saved);
+          return;
+        } catch {
+          clearRoom();
+        }
+      }
       const data = await partyPost({ action: 'create' });
-      this.room = data.room;
-      this.peer = data.peer;
-      this.token = data.token;
-      this.ready = true;
-      const url = `${location.origin}/controller.html?room=${this.room}`;
-      this.el.qr.src = await QRCode.toDataURL(url, {
-        margin: 1,
-        width: 220,
-        color: { dark: '#1a1c1f', light: '#ddd6c8' },
-      });
-      this.el.code.textContent = this.room;
-      this.el.panel.classList.remove('hidden');
-      document.body.classList.add('has-party');
-      this.setQrVisible(false);
-      this.renderCrew();
-      this.pollTimer = window.setInterval(() => this.poll(), 100);
-      window.addEventListener('pagehide', this.leave);
+      saveRoom({ room: data.room, peer: data.peer, token: data.token });
+      await this.openRoom(data);
     } catch (err) {
       console.warn('Party escorts offline:', err);
       this.el.panel.classList.remove('hidden');
@@ -76,6 +73,25 @@ export class PartyHost {
       this.el.code.textContent = '';
       this.el.crew.innerHTML = `<li class="muted">${err.message || 'Escorts are offline.'}</li>`;
     }
+  }
+
+  async openRoom(data) {
+    this.room = data.room;
+    this.peer = data.peer;
+    this.token = data.token;
+    this.ready = true;
+    const url = `${location.origin}/controller.html?room=${this.room}`;
+    this.el.qr.src = await QRCode.toDataURL(url, {
+      margin: 1,
+      width: 220,
+      color: { dark: '#1a1c1f', light: '#ddd6c8' },
+    });
+    this.el.code.textContent = this.room;
+    this.el.panel.classList.remove('hidden');
+    document.body.classList.add('has-party');
+    this.setQrVisible(false);
+    this.renderCrew();
+    this.pollTimer = window.setInterval(() => this.poll(), 100);
   }
 
   leave = () => {
@@ -174,5 +190,32 @@ export class PartyHost {
     } catch {
       /* keep the last QR if the poll blips */
     }
+  }
+}
+
+function loadRoom() {
+  try {
+    const raw = sessionStorage.getItem(ROOM_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    if (data?.room && data?.token && data?.peer) return data;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function saveRoom(data) {
+  try {
+    sessionStorage.setItem(ROOM_KEY, JSON.stringify(data));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearRoom() {
+  try {
+    sessionStorage.removeItem(ROOM_KEY);
+  } catch {
+    /* ignore */
   }
 }
