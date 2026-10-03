@@ -5,7 +5,18 @@ import { StarMapView } from './views/starmap.js';
 import { TravelView } from './views/travel.js';
 import { DockView } from './views/dock.js';
 import { renderMenu } from './ui/menu.js';
+import { renderLeaderboard } from './ui/leaderboard.js';
 import { StationScreen } from './ui/station.js';
+import {
+  CALLSIGN_RE,
+  formatRunTime,
+  hasRunClock,
+  loadCallsign,
+  MIN_TIME_MS,
+  runScore,
+  saveCallsign,
+  submitRun,
+} from './score.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
 const PRECISION_BONUS = 0.1; // share of cargo pay awarded for docking without bumps
@@ -20,6 +31,30 @@ export class Game {
     this.starmap = null;
     this.station = null;
     this.travel = null;
+    this.screen = 'menu';
+    this.windowFocused = document.hasFocus();
+    window.addEventListener('blur', () => {
+      this.windowFocused = false;
+    });
+    window.addEventListener('focus', () => {
+      this.windowFocused = true;
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.flushClock();
+    });
+  }
+
+  tick(dt) {
+    const s = this.state;
+    if (!s || s.won || !Number.isFinite(s.runMs)) return;
+    if (this.screen === 'menu' || this.screen === 'victory') return;
+    if (!this.windowFocused || document.hidden) return;
+    if (this.app.view?.paused) return;
+    s.runMs += dt * 1000;
+  }
+
+  flushClock() {
+    if (this.state && Number.isFinite(this.state.runMs) && this.screen !== 'menu') save(this.state);
   }
 
   start() {
@@ -27,6 +62,8 @@ export class Game {
   }
 
   showMenu() {
+    this.flushClock();
+    this.screen = 'menu';
     this.station?.destroy();
     this.station = null;
     this.app.hud.innerHTML = '';
@@ -38,7 +75,15 @@ export class Game {
       onNew: () => this.newGame(),
       onContinue: () => this.continueGame(),
       onToggleMute: () => this.app.audio.toggleMute(),
+      onLeaderboard: () => this.showLeaderboard(),
     });
+  }
+
+  showLeaderboard() {
+    this.screen = 'menu';
+    this.backdrop.showShip = true;
+    this.app.setView(this.backdrop);
+    renderLeaderboard(this.app.ui, { onBack: () => this.showMenu() });
   }
 
   setGalaxy(seed) {
@@ -71,6 +116,7 @@ export class Game {
   }
 
   showStation(report) {
+    this.screen = 'station';
     this.station?.destroy();
     this.app.hud.innerHTML = '';
     this.station = new StationScreen(this, { report });
@@ -86,10 +132,12 @@ export class Game {
     const from = this.galaxy.systems[s.current];
     const to = this.galaxy.systems[contract.dest];
     this.flight = { contract, from, to, hull: s.hull };
+    this.screen = 'dock';
     this.startDock('undock', from, () => this.startTravel());
   }
 
   startDock(mode, system, next) {
+    this.screen = 'dock';
     this.dock = new DockView(this.app, {
       mode, system, galaxy: this.galaxy, state: this.state, hull: this.flight.hull,
       // Deferred so we don't tear down the view in the middle of its own update.
@@ -104,6 +152,7 @@ export class Game {
   }
 
   startTravel() {
+    this.screen = 'travel';
     const { contract, from, to } = this.flight;
     this.travel = new TravelView(this.app, {
       state: this.state,
@@ -117,6 +166,7 @@ export class Game {
         this.travel = null;
         if (!r.success) return this.applyTravelResult(contract, r);
         this.flight.hull = r.hull;
+        this.screen = 'dock';
         this.startDock('dock', to, (d) => this.applyTravelResult(contract, { ...r, hull: d.hull, dockBumps: d.bumps }));
       }, 0),
     });
@@ -199,9 +249,14 @@ export class Game {
 
   showVictory() {
     const s = this.state;
+    this.screen = 'victory';
     this.app.audio.play('victory');
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
+    const score = runScore(s.stats);
+    const timed = hasRunClock(s);
+    const timeLabel = timed ? formatRunTime(s.runMs) : '—';
+    const priorName = loadCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
         <h1 class="logo">TERMINUS<span>REACHED</span></h1>
@@ -213,16 +268,82 @@ export class Game {
           <div class="r-line"><span>Capital ships destroyed</span><b>${s.stats.bosses}</b></div>
           <div class="r-line"><span>Ships lost</span><b>${s.stats.deaths}</b></div>
           <div class="r-line"><span>Systems visited</span><b>${s.visited.length} / ${this.galaxy.systems.length}</b></div>
+          <div class="r-line"><span>Run time</span><b>${timeLabel}</b></div>
+          <div class="r-line"><span>Credits</span><b class="accent">+${fmt(score.earned)}</b></div>
+          <div class="r-line"><span>Kills × 50</span><b class="accent">+${fmt(score.killPts)}</b></div>
+          <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
+          <div class="r-line"><span>Ships lost × 10,000</span><b class="warn">−${fmt(score.deathPts)}</b></div>
+          <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
+          ${
+            timed
+              ? `<div class="submit-row">
+                  <input type="text" maxlength="16" spellcheck="false" placeholder="Callsign" value="${escapeAttr(priorName)}" data-callsign>
+                  <button class="btn primary" data-act="submit">Submit</button>
+                </div>
+                <p class="submit-status muted small"></p>`
+              : '<p class="muted small">This save started before the leaderboard clock, so it cannot be posted.</p>'
+          }
         </div>
         <div class="menu-buttons">
           <button class="btn primary big" data-act="keep">Keep flying</button>
           <button class="btn big" data-act="menu">Main menu</button>
         </div>
       </div>`;
-    this.app.ui.querySelector('.victory').addEventListener('click', (e) => {
+    const root = this.app.ui.querySelector('.victory');
+    const status = root.querySelector('.submit-status');
+    root.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'keep') this.showStation();
       if (act === 'menu') this.showMenu();
+      if (act === 'submit') this.submitVictory(root, status, score);
     });
   }
+
+  async submitVictory(root, status, score) {
+    const s = this.state;
+    const input = root.querySelector('[data-callsign]');
+    const btn = root.querySelector('[data-act="submit"]');
+    const callsign = (input?.value || '').trim();
+    if (!CALLSIGN_RE.test(callsign)) {
+      status.textContent = 'Callsign must be 2–16 letters, numbers, spaces, or hyphens.';
+      status.className = 'submit-status warn small';
+      return;
+    }
+    if (s.runMs < MIN_TIME_MS) {
+      status.textContent = 'Runs under 3 minutes are not posted.';
+      status.className = 'submit-status warn small';
+      return;
+    }
+    btn.disabled = true;
+    status.textContent = 'Posting to the lanes…';
+    status.className = 'submit-status muted small';
+    try {
+      saveCallsign(callsign);
+      const data = await submitRun({
+        run_id: s.runId,
+        callsign,
+        score: score.total,
+        time_ms: Math.round(s.runMs),
+        earned: s.stats.earned,
+        kills: s.stats.kills,
+        bosses: s.stats.bosses,
+        deaths: s.stats.deaths,
+        deliveries: s.stats.deliveries,
+        seed: s.seed,
+      });
+      status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
+      status.className = 'submit-status small';
+    } catch (err) {
+      btn.disabled = false;
+      status.textContent =
+        err.message && err.message !== 'offline'
+          ? err.message
+          : 'The board is offline. Host the PHP API on this domain to post scores.';
+      status.className = 'submit-status warn small';
+    }
+  }
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }

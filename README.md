@@ -27,3 +27,14 @@ npm run dev
 - `src/fx/` has the neon shapes, particles and starfield.
 
 Progress auto-saves to `localStorage` each time you dock.
+
+## Leaderboard on Plesk
+
+The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run is posted once, the first time cargo is delivered to the Terminus.
+
+1. In Plesk, create a MariaDB database and user, then run [`server/schema.sql`](server/schema.sql).
+2. Copy [`server/api/config.example.php`](server/api/config.example.php) to `server/api/config.php` on the server and fill in those credentials. Keep `config.php` out of git.
+3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/`.
+4. Confirm PHP 8.1 or newer is selected for the domain (the Plesk default on current installs).
+
+No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host.

@@ -156,3 +156,11 @@ export const GOODS = [
   { name: 'Singularity Shards', base: 35, tier: 9 },
   { name: 'Void Relics', base: 38, tier: 10 },
 ];
+
+// Terminus run score. Credits are the main term; kills and capital ships
+// can still move a rank. Each lost ship is a large penalty.
+export const SCORE = {
+  kill: 50,
+  boss: 2500,
+  death: 10000,
+};
