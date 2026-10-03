@@ -24,6 +24,8 @@ const BUMP_MIN_SPEED = 4;
 const ARM_HALF_W = 0.8;
 const GATE_HALF_W = 8;
 const GATE_Y = 41;
+const STATION_SPIN_BASE = 0.06; // rad/s at tier 1; every station rotates
+const STATION_SPIN_PER_TIER = 0.012; // tier 10 ≈ 0.17 rad/s
 
 const NPC_TYPES = {
   shuttle: { r: 1.5, speed: [16, 24], weight: 3 },
@@ -42,7 +44,7 @@ const segGeos = Array.from({ length: 24 }, (_, i) =>
 );
 
 // Each station's look and busyness is fixed per system (seeded), and grows with tier:
-// more pads, more traffic, and from tier 4 the whole station slowly rotates.
+// more pads, more traffic, and faster rotation.
 export function stationLayout(galaxySeed, system) {
   const rng = new RNG((galaxySeed ^ Math.imul(system.id + 1, 2654435761)) >>> 0);
   const flip = rng.chance(0.5) ? 1 : -1;
@@ -52,7 +54,7 @@ export function stationLayout(galaxySeed, system) {
     armLen: rng.float(26, 30),
     offset: rng.float(0, Math.PI * 2),
     hubY: rng.float(0, 6),
-    spin: system.tier >= 4 ? (system.tier - 3) * 0.02 * flip : 0,
+    spin: (STATION_SPIN_BASE + STATION_SPIN_PER_TIER * (system.tier - 1)) * flip,
     traffic: Math.min(8, 2 + Math.round(system.tier * 0.6)),
     drones: 3 + rng.int(0, 2),
     gateX: rng.float(-30, 30),
