@@ -1,6 +1,7 @@
-import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER } from '../data.js';
+import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER, WEAPON_UPGRADES } from '../data.js';
 import {
   shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save,
+  weaponUpgradeLevel, weaponUpgradeCost, buyWeaponUpgrade,
 } from '../state.js';
 import { routeDifficulty } from '../galaxy.js';
 import { tierCss } from '../views/starmap.js';
@@ -66,6 +67,9 @@ export class StationScreen {
         break;
       case 'buy':
         audio.play(buyWeapon(s, id) ? 'buy' : 'deny');
+        break;
+      case 'wupgrade':
+        audio.play(buyWeaponUpgrade(s, id) ? 'buy' : 'deny');
         break;
       case 'repair':
         audio.play(repair(s) ? 'buy' : 'deny');
@@ -254,7 +258,7 @@ export class StationScreen {
           <p class="muted">${w.desc}</p>
           <div class="u-stat">${w.stat}</div>
           ${owned
-            ? '<button class="btn" disabled>Installed</button>'
+            ? WEAPON_UPGRADES[id] ? this.weaponUpgrade(id) : '<button class="btn" disabled>Installed</button>'
             : `<button class="btn ${s.credits >= w.cost ? 'primary' : ''}" data-act="buy" data-id="${id}" ${s.credits < w.cost ? 'disabled' : ''}>Buy · ${fmt(w.cost)} cr</button>`}
         </div>`;
     }).join('');
@@ -273,6 +277,24 @@ export class StationScreen {
       <div class="grid">${sys}</div>
       <h2 class="section">Armaments <span class="muted small">All weapons are boosted by Weapons Core. Switch in flight with 1-4 or Q/E.</span></h2>
       <div class="grid">${weapons}</div>`;
+  }
+
+  // Upgrade row on an installed weapon's card (e.g. Seeker Rapid Recharge).
+  weaponUpgrade(id) {
+    const s = this.state;
+    const u = WEAPON_UPGRADES[id];
+    const lvl = weaponUpgradeLevel(s, id);
+    const cost = weaponUpgradeCost(id, lvl);
+    const cur = u.format(u.value(lvl));
+    const next = cost != null ? u.format(u.value(lvl + 1)) : null;
+    return `
+      <div class="u-sub">
+        <div class="u-level">${u.name} · Lv ${lvl} ${pips(lvl, u.max)}</div>
+        <div class="u-stat">${cur}${next ? ` <span class="arrow">→</span> <b>${next}</b>` : ' <span class="muted">(max)</span>'}</div>
+      </div>
+      ${cost != null
+        ? `<button class="btn ${s.credits >= cost ? 'primary' : ''}" data-act="wupgrade" data-id="${id}" ${s.credits < cost ? 'disabled' : ''}>Upgrade · ${fmt(cost)} cr</button>`
+        : '<button class="btn" disabled>Maxed</button>'}`;
   }
 
   renderFooter(stats) {

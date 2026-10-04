@@ -14,15 +14,19 @@
 
 **Controls**
 
-| Key | Action |
-| --- | --- |
-| WASD / Arrows | Move |
-| Space / J | Fire |
-| F | Toggle auto-fire |
-| 1–4, Q / E | Select weapon |
-| Esc / P | Pause |
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Move | WASD / Arrows | Left stick (analog: tilt less to go slower) or D-pad |
+| Fire | Space / J | A or RT |
+| Toggle auto-fire | F | X |
+| Select weapon | 1–4, Q / E | LB / RB |
+| Pause | Esc / P | Start |
+
+Docking uses the same movement controls; the stick gives proportional thrust.
 
 The game also pauses automatically if the window loses focus.
+
+**Gamepad:** any controller Chrome recognizes works, using its standard (Xbox-style) layout. A Logitech F310 on a Mac must be in **D mode** (switch on the back); in X mode macOS has no driver and Chrome can't see it. If Chrome reports a non-standard layout, the game falls back to the F310's D-mode layout. A toast confirms when a gamepad connects, and the [test console](../foundations/test-console.md)'s `pad` command shows exactly what Chrome reports.
 
 **Pause menu:** Resume, or **Retreat to origin**. Retreating forfeits the contract and bounties but costs no fee. Hull damage is kept.
 

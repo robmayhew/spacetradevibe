@@ -1,4 +1,4 @@
-import { SYSTEMS, WEAPONS, GOODS, COST_GROWTH, PAY_GROWTH } from './data.js';
+import { SYSTEMS, WEAPONS, WEAPON_UPGRADES, GOODS, COST_GROWTH, PAY_GROWTH } from './data.js';
 import { routeDifficulty, systemDistance } from './galaxy.js';
 import { shuffle, pick, rand } from './rng.js';
 
@@ -103,6 +103,26 @@ export function generateContracts(state, galaxy) {
 
 export function hasWeapon(state, id) {
   return state.weapons.includes(id);
+}
+
+export function weaponUpgradeLevel(state, id) {
+  return state.weaponLevels?.[id] ?? WEAPON_UPGRADES[id].start;
+}
+
+export function weaponUpgradeCost(id, level) {
+  const u = WEAPON_UPGRADES[id];
+  if (level >= u.max) return null;
+  return u.costs?.[level + 1] ?? Math.round(u.baseCost * Math.pow(COST_GROWTH, level - u.start));
+}
+
+export function buyWeaponUpgrade(state, id) {
+  if (!hasWeapon(state, id)) return false;
+  const level = weaponUpgradeLevel(state, id);
+  const cost = weaponUpgradeCost(id, level);
+  if (cost == null || state.credits < cost) return false;
+  state.credits -= cost;
+  state.weaponLevels = { ...state.weaponLevels, [id]: level + 1 };
+  return true;
 }
 
 export function buyWeapon(state, id) {

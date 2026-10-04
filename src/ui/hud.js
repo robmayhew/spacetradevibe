@@ -61,7 +61,7 @@ export class TravelHUD {
 
   update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, seeker }) {
     if (seeker) {
-      const label = seeker.reload > 0 ? `${seeker.reload.toFixed(1)}s` : '▮'.repeat(seeker.ammo) + '▯'.repeat(seeker.max - seeker.ammo);
+      const label = seeker.unlimited ? '∞' : seeker.reload > 0 ? `${seeker.reload.toFixed(1)}s` : '▮'.repeat(seeker.ammo) + '▯'.repeat(seeker.max - seeker.ammo);
       this.set('seeker', label, (v) => {
         const el = this.root.querySelector('.wslot[data-w="seeker"] .ammo');
         if (!el) return;

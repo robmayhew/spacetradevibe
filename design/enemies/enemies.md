@@ -12,6 +12,8 @@ Enemy stats scale with route difficulty (d):
 - bullet speed +4% per level
 - bounties ×1.55^(d−1)
 
+**Level 10 adjustment:** on difficulty-10 routes (including the Terminus run), enemy HP and damage are a further 10% lower than the curves above (`DIFFICULTY_ADJUST` in `src/data.js`). Bounties are unchanged.
+
 The HP and damage rates match the player's upgrade scaling, so upgrades at level N are balanced for difficulty-N routes.
 
 For comparison, the starting ship moves at 40. Base damage is high everywhere: one shot from a scout takes 20% of the starting ship's 120 hull, and a kamikaze ram takes over 60%.

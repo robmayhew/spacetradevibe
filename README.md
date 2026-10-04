@@ -9,13 +9,15 @@ npm run dev
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| WASD / Arrows | Move (the ship never turns) |
-| Space / J | Fire |
-| F | Toggle auto-fire |
-| 1–4, Q / E | Select weapon |
-| Esc / P | Pause (retreat option) |
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Move (the ship never turns) | WASD / Arrows | Left stick (analog: tilt less to go slower) or D-pad |
+| Fire | Space / J | A or RT |
+| Toggle auto-fire | F | X |
+| Select weapon | 1–4, Q / E | LB / RB |
+| Pause (retreat option) | Esc / P | Start |
+
+Gamepads work in Chrome through the standard Gamepad API. In menus: D-pad / stick to move, A to select, B to go back, LB / RB for station tabs. **Logitech F310 on macOS: set the switch on the back to D.**
 
 ## Test console
 

@@ -4,8 +4,8 @@ import { Particles } from '../fx/particles.js';
 import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx/model.js';
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
-import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
-import { shipStats } from '../state.js';
+import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, DIFFICULTY_ADJUST, WEAPON_UPGRADES } from '../data.js';
+import { shipStats, weaponUpgradeLevel } from '../state.js';
 import { TravelHUD } from '../ui/hud.js';
 import { WarpStreaks } from '../fx/warp.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
@@ -79,8 +79,9 @@ export class TravelView {
     this.input = app.input;
     this.onDone = onDone;
     this.d = contract.difficulty;
-    this.hpMult = Math.pow(HP_GROWTH, this.d - 1);
-    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
+    const adjust = DIFFICULTY_ADJUST[this.d] ?? 1;
+    this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * adjust;
+    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1) * adjust;
     this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
     this.fireRate = 1.1 + 0.06 * (this.d - 1);
@@ -95,6 +96,7 @@ export class TravelView {
 
     const stats = shipStats(state);
     this.stats = stats;
+    this.seekerRecharge = WEAPON_UPGRADES.seeker.value(weaponUpgradeLevel(state, 'seeker'));
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     this.player = {
       x: 0, y: -62,
@@ -211,7 +213,7 @@ export class TravelView {
       hull: this.player.hull, maxHull: this.player.maxHull,
       shield: this.player.shield, maxShield: this.player.maxShield,
       bounty: this.bounty, weapon: this.player.weapon, auto: this.auto,
-      seeker: { ammo: this.player.seekerAmmo, max: WEAPONS.seeker.ammo, reload: this.player.seekerReload },
+      seeker: { ammo: this.player.seekerAmmo, max: WEAPONS.seeker.ammo, reload: this.player.seekerReload, unlimited: this.seekerRecharge <= 0 },
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
     });
@@ -357,6 +359,7 @@ export class TravelView {
     this.fireRate = 1.1;
     const stats = shipStats(state);
     this.stats = stats;
+    this.seekerRecharge = WEAPON_UPGRADES.seeker.value(weaponUpgradeLevel(state, 'seeker'));
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     if (!this.owned.includes(this.player.weapon)) this.player.weapon = this.owned[0] || 'pulse';
     this.player.maxHull = stats.maxHull;
@@ -456,11 +459,9 @@ export class TravelView {
     let mx = 0;
     let my = 0;
     if (controllable) {
-      mx = (inp.down('KeyD', 'ArrowRight') ? 1 : 0) - (inp.down('KeyA', 'ArrowLeft') ? 1 : 0);
-      my = (inp.down('KeyW', 'ArrowUp') ? 1 : 0) - (inp.down('KeyS', 'ArrowDown') ? 1 : 0);
-      const len = Math.hypot(mx, my) || 1;
-      p.x = clamp(p.x + (mx / len) * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
-      p.y = clamp(p.y + (my / len) * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
+      ({ x: mx, y: my } = inp.move()); // keys, D-pad, or analog stick (length ≤ 1)
+      p.x = clamp(p.x + mx * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
+      p.y = clamp(p.y + my * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
 
       WEAPON_ORDER.forEach((w, i) => {
         if (inp.hit(`Digit${i + 1}`) && this.owned.includes(w)) p.weapon = w;
@@ -526,7 +527,10 @@ export class TravelView {
       case 'seeker':
         for (const s of [-1, 1]) this.addShot({ kind: 'missile', x: p.x + s * 2.5, y: p.y, vx: s * 25, vy: 25, dmg, r: 1, life: 3.5, color: w.color });
         p.seekerAmmo--;
-        if (p.seekerAmmo <= 0) p.seekerReload = w.reload;
+        if (p.seekerAmmo <= 0) {
+          if (this.seekerRecharge > 0) p.seekerReload = this.seekerRecharge;
+          else p.seekerAmmo = w.ammo; // max Rapid Recharge: refill instantly
+        }
         this.ship.setSeekerAmmo(p.seekerAmmo);
         break;
     }

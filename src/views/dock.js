@@ -403,8 +403,7 @@ export class DockView {
     let ax = 0;
     let ay = 0;
     if (control) {
-      ax = (inp.down('KeyD', 'ArrowRight') ? 1 : 0) - (inp.down('KeyA', 'ArrowLeft') ? 1 : 0);
-      ay = (inp.down('KeyW', 'ArrowUp') ? 1 : 0) - (inp.down('KeyS', 'ArrowDown') ? 1 : 0);
+      ({ x: ax, y: ay } = inp.move()); // keys, D-pad, or analog stick (length ≤ 1)
     }
     if (p.attached) {
       if (control && this.mode === 'undock' && (ax || ay)) p.attached = false;
@@ -418,9 +417,8 @@ export class DockView {
       // Thrusters with inertia: the ship never turns, it drifts and must brake.
       const maxV = this.stats.speed * 0.8;
       const accel = maxV * 2.6;
-      const len = Math.hypot(ax, ay) || 1;
-      p.vx += (ax / len) * accel * dt;
-      p.vy += (ay / len) * accel * dt;
+      p.vx += ax * accel * dt;
+      p.vy += ay * accel * dt;
       const damp = Math.exp(-(ax || ay ? 0.6 : 1.8) * dt);
       p.vx *= damp;
       p.vy *= damp;

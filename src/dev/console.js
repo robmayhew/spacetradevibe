@@ -1,5 +1,5 @@
 import * as DATA from '../data.js';
-import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES } from '../data.js';
+import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES, WEAPON_UPGRADES } from '../data.js';
 import { save, shipStats, shipRating, generateContracts } from '../state.js';
 import { routeDifficulty } from '../galaxy.js';
 
@@ -211,9 +211,15 @@ function buildCommands(dc) {
       },
     },
     upgrade: {
-      group: 'Ship & economy', args: '<system|all> <level|max>', help: `Set an upgrade level. Systems: ${Object.keys(SYSTEMS).join(', ')}.`, needs: 'game', cheat: true,
-      complete: (i) => (i === 0 ? [...Object.keys(SYSTEMS), 'all'] : ['max']),
+      group: 'Ship & economy', args: '<system|all> <level|max>', help: `Set an upgrade level. Systems: ${Object.keys(SYSTEMS).join(', ')}; weapon upgrades: ${Object.keys(WEAPON_UPGRADES).join(', ')}.`, needs: 'game', cheat: true,
+      complete: (i) => (i === 0 ? [...Object.keys(SYSTEMS), ...Object.keys(WEAPON_UPGRADES), 'all'] : ['max']),
       run: ([sys, lvl = 'max']) => {
+        const wu = WEAPON_UPGRADES[sys];
+        if (wu) {
+          const level = Math.max(wu.start, Math.min(wu.max, lvl === 'max' ? wu.max : num(lvl, 'level')));
+          s().weaponLevels = { ...s().weaponLevels, [sys]: level };
+          return `${wu.name} level ${level}: ${wu.format(wu.value(level))}. Takes effect next flight.`;
+        }
         const keys = sys === 'all' ? Object.keys(SYSTEMS) : [sys];
         for (const k of keys) {
           const def = SYSTEMS[k];
@@ -416,6 +422,23 @@ function buildCommands(dc) {
       run: ([v]) => {
         g().dock.L.spin = num(v, 'speed');
         return `Station spin ${g().dock.L.spin} rad/s.`;
+      },
+    },
+
+    // ---- input
+    pad: {
+      group: 'Input', help: 'Show what Chrome reports for the gamepad (press a button first): name, layout, held buttons, stick, raw axes.',
+      run: () => {
+        const p = dc.app.input.pad;
+        if (!p.connected) return 'No gamepad seen. Press any button on it. On a Mac, set the Logitech F310 switch to <b>D</b>.';
+        const raw = [...navigator.getGamepads()].find((g) => g?.connected);
+        const down = raw.buttons.map((b, i) => (b.pressed ? i : null)).filter((i) => i !== null);
+        return [
+          `<b>${escapeHtml(p.id)}</b>`,
+          `Layout: ${p.mapping || 'non-standard'}${p.mapping === 'standard' ? '' : ' (using the Logitech D-mode fallback)'}`,
+          `Held: ${[...p.held].join(', ') || 'none'} · raw buttons: ${down.join(', ') || 'none'}`,
+          `Stick: x ${p.stick.x.toFixed(2)}, y ${p.stick.y.toFixed(2)} · raw axes: ${p.axes.map((a) => a.toFixed(2)).join(', ')}`,
+        ].join('<br>');
       },
     },
 

@@ -44,6 +44,7 @@ export function renderMenu(root, { hasSave, muted, callsign, onNew, onContinue, 
           <span><kbd>F</kbd> auto-fire</span>
           <span><kbd>1</kbd>-<kbd>4</kbd> / <kbd>Q</kbd><kbd>E</kbd> weapons</span>
           <span><kbd>Esc</kbd> pause</span>
+          <span>🎮 Gamepad: stick / D-pad move · <kbd>A</kbd>/<kbd>RT</kbd> fire · <kbd>LB</kbd> <kbd>RB</kbd> weapons · <kbd>X</kbd> auto-fire · <kbd>Start</kbd> pause · <kbd>A</kbd>/<kbd>B</kbd> select / back in menus</span>
         </div>
       </div>
     </div>`;

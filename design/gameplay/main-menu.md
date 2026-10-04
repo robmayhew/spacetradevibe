@@ -10,4 +10,6 @@
 - **Sound On/Off** toggle.
 - A short How to Play panel with the controls.
 
+**Gamepad:** the menus, station screen, pop-ups and pause menu can be driven from a gamepad. The D-pad or stick moves a highlight between buttons, **A** selects, **B** goes back (closes pop-ups, resumes from pause), and **LB / RB** switch station tabs. The highlight appears on the first gamepad press and hides when you use the mouse.
+
 A new game starts with **60 credits**, the starting ship and the Pulse Laser.
