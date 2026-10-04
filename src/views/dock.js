@@ -8,6 +8,7 @@ import { createPlayerShip } from '../fx/ship.js';
 import { textSprite } from '../fx/text.js';
 import { tierColor } from './starmap.js';
 import { shipStats } from '../state.js';
+import { shakeEnabled } from '../prefs.js';
 import { DockHUD } from '../ui/dockhud.js';
 import { RNG, rand, clamp, pick, weightedPick } from '../rng.js';
 
@@ -324,7 +325,8 @@ export class DockView {
 
     this.bumpCd -= dt;
     this.shake *= Math.exp(-8 * dt);
-    this.camera.position.set((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake, 0);
+    const shake = shakeEnabled() ? this.shake : 0;
+    this.camera.position.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, 0);
     this.hud.update({ hull: this.player.hull, maxHull: this.player.maxHull, time: this.time, bumps: this.bumps, hint: this.hint });
   }
 

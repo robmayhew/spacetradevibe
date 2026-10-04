@@ -445,9 +445,88 @@ export function createBoardStore() {
   };
 }
 
+export function createFeedbackStore() {
+  const rows = [];
+  let nextId = 1;
+
+  return {
+    list() {
+      return {
+        rows: rows
+          .filter((r) => r.kind === 'feature' && !r.hidden)
+          .slice()
+          .sort((a, b) => b.created - a.created)
+          .slice(0, 50)
+          .map((r) => ({
+            title: r.title,
+            body: r.body,
+            callsign: r.callsign,
+            version: r.version,
+            created_at: new Date(r.created).toISOString(),
+          })),
+      };
+    },
+    submit(body, ip = 'dev') {
+      const kind = body.kind === 'bug' ? 'bug' : body.kind === 'feature' ? 'feature' : '';
+      if (!kind) {
+        const err = new Error('Kind must be bug or feature.');
+        err.status = 400;
+        throw err;
+      }
+      const callsign = String(body.callsign || '').trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9 -]{0,14}[A-Za-z0-9]$/.test(callsign)) {
+        const err = new Error('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
+        err.status = 400;
+        throw err;
+      }
+      const title = String(body.title || '').trim();
+      const details = String(body.body || '').trim();
+      if (!title || title.length > 120) {
+        const err = new Error('Title must be 1–120 characters.');
+        err.status = 400;
+        throw err;
+      }
+      if (!details || details.length > 2000) {
+        const err = new Error('Details must be 1–2000 characters.');
+        err.status = 400;
+        throw err;
+      }
+      const version = String(body.version || '').trim();
+      if (!version || version.length > 32 || !/^[A-Za-z0-9._+-]+$/.test(version)) {
+        const err = new Error('Invalid version.');
+        err.status = 400;
+        throw err;
+      }
+      const hourAgo = now() - 60 * 60 * 1000;
+      const recent = rows.filter((r) => r.ip === ip && r.created >= hourAgo).length;
+      if (recent >= 8) {
+        const err = new Error('Too many reports from this address. Try again later.');
+        err.status = 429;
+        throw err;
+      }
+      let userAgent = String(body.user_agent || '').slice(0, 512);
+      if (kind !== 'bug') userAgent = '';
+      rows.push({
+        id: nextId++,
+        kind,
+        title,
+        body: details,
+        callsign,
+        version,
+        user_agent: userAgent,
+        ip,
+        hidden: false,
+        created: now(),
+      });
+      return { ok: true };
+    },
+  };
+}
+
 export function partyDevPlugin() {
   const store = createPartyStore();
   const board = createBoardStore();
+  const feedback = createFeedbackStore();
 
   function isParty(req) {
     return pathnameOf(req) === '/api/party.php';
@@ -461,8 +540,12 @@ export function partyDevPlugin() {
     return pathnameOf(req) === '/api/score.php';
   }
 
+  function isFeedback(req) {
+    return pathnameOf(req) === '/api/feedback.php';
+  }
+
   function isApi(req) {
-    return isParty(req) || isBoard(req) || isScore(req);
+    return isParty(req) || isBoard(req) || isScore(req) || isFeedback(req);
   }
 
   function handleParty(req, res) {
@@ -494,10 +577,31 @@ export function partyDevPlugin() {
       .catch((e) => jsonErr(res, e.status || 500, e.message || 'Score error.'));
   }
 
+  function handleFeedback(req, res) {
+    if (req.method === 'GET') {
+      const kind = queryOf(req).get('kind') === 'bug' ? 'bug' : 'feature';
+      if (kind !== 'feature') {
+        jsonErr(res, 403, 'Bug reports are not listed.');
+        return;
+      }
+      jsonOk(res, feedback.list());
+      return;
+    }
+    if (req.method !== 'POST') {
+      jsonErr(res, 405, 'GET or POST feedback.');
+      return;
+    }
+    const ip = req.socket?.remoteAddress || 'dev';
+    readBody(req)
+      .then((body) => jsonOk(res, feedback.submit(body, ip)))
+      .catch((e) => jsonErr(res, e.status || 500, e.message || 'Feedback error.'));
+  }
+
   function handleReq(req, res) {
     if (isParty(req)) handleParty(req, res);
     else if (isBoard(req)) handleBoard(req, res);
     else if (isScore(req)) handleScore(req, res);
+    else if (isFeedback(req)) handleFeedback(req, res);
   }
 
   return {

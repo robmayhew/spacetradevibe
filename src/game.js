@@ -7,6 +7,7 @@ import { TravelView } from './views/travel.js';
 import { DockView } from './views/dock.js';
 import { renderMenu } from './ui/menu.js';
 import { renderLeaderboard } from './ui/leaderboard.js';
+import { renderSettings } from './ui/settings.js';
 import { StationScreen } from './ui/station.js';
 import {
   CALLSIGN_RE,
@@ -19,6 +20,8 @@ import {
   saveCallsign,
   submitRun,
 } from './score.js';
+import { VERSION } from './changelog.js';
+import { shouldShowWhatsNew } from './prefs.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
 const PRECISION_BONUS = 0.1; // share of cargo pay awarded for docking without bumps
@@ -77,14 +80,15 @@ export class Game {
     this.app.hud.innerHTML = '';
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
+    const showWhatsNew = shouldShowWhatsNew(VERSION);
     renderMenu(this.app.ui, {
       hasSave: !!load(),
-      muted: this.app.audio.muted,
       callsign: ensureCallsign(),
+      showWhatsNew,
       onNew: () => this.newGame(),
       onContinue: () => this.continueGame(),
-      onToggleMute: () => this.app.audio.toggleMute(),
       onLeaderboard: () => this.showLeaderboard(),
+      onSettings: (panel) => this.showSettings(panel),
       onCallsign: (name) => saveCallsign(name),
     });
   }
@@ -94,6 +98,20 @@ export class Game {
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
     renderLeaderboard(this.app.ui, { onBack: () => this.showMenu() });
+  }
+
+  showSettings(panel = 'hub') {
+    this.screen = 'menu';
+    this.backdrop.showShip = true;
+    this.app.setView(this.backdrop);
+    renderSettings(this.app.ui, {
+      audio: this.app.audio,
+      initialPanel: panel || 'hub',
+      onBack: () => this.showMenu(),
+      onSaveCleared: () => {
+        this.state = null;
+      },
+    });
   }
 
   setGalaxy(seed) {

@@ -147,3 +147,11 @@ export function load() {
     return null;
   }
 }
+
+export function clearSave() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // storage unavailable
+  }
+}
