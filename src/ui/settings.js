@@ -3,6 +3,8 @@ import { loadPrefs, savePrefs } from '../prefs.js';
 import { fetchFeatures, submitFeedback } from '../feedback.js';
 import { abandonRun, CALLSIGN_RE, ensureCallsign } from '../score.js';
 import { clearSave, listSlots, peekSlot, load, save } from '../state.js';
+import { wikiHtml } from './wiki.js';
+import { startPreviews } from './preview.js';
 
 const PANELS = {
   hub: 'Settings',
@@ -10,6 +12,7 @@ const PANELS = {
   display: 'Display',
   gameplay: 'Gameplay',
   escorts: 'Escorts',
+  wiki: 'Wiki',
   save: 'Save',
   about: 'About',
   bug: 'Report a bug',
@@ -18,14 +21,18 @@ const PANELS = {
 
 export function renderSettings(root, { audio, party, initialPanel = 'hub', onBack, onSaveCleared, onQrLock }) {
   let panel = PANELS[initialPanel] ? initialPanel : 'hub';
+  let wikiSection = 'hostiles';
   let slots = listSlots();
+  let stopWikiPreviews = null;
 
   const draw = () => {
+    stopWikiPreviews?.();
+    stopWikiPreviews = null;
     root.innerHTML = `
       <div class="menu settings-menu">
         <h1 class="logo">SET<span>TINGS</span></h1>
-        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, gameplay, escorts, save, version history, and feedback.' : PANELS[panel])}</p>
-        ${panelBody(panel, { audio, slots, party })}
+        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, gameplay, escorts, wiki, save, version history, and feedback.' : PANELS[panel])}</p>
+        ${panelBody(panel, { audio, slots, party, wikiSection })}
         <div class="menu-buttons">
           ${panel === 'hub' ? '<button class="btn big" data-act="back">Back</button>' : '<button class="btn big" data-act="hub">Back to Settings</button>'}
         </div>
@@ -37,27 +44,37 @@ export function renderSettings(root, { audio, party, initialPanel = 'hub', onBac
         panel = p;
         draw();
       },
+      setWiki: (s) => {
+        wikiSection = s;
+        draw();
+      },
       refreshSave: () => {
         slots = listSlots();
         draw();
       },
-      onBack,
+      onBack: () => {
+        stopWikiPreviews?.();
+        stopWikiPreviews = null;
+        onBack();
+      },
       onSaveCleared,
       onQrLock,
       party,
     });
+    if (panel === 'wiki') stopWikiPreviews = startPreviews(root);
   };
 
   draw();
 }
 
-function panelBody(panel, { audio, slots, party }) {
+function panelBody(panel, { audio, slots, party, wikiSection }) {
   if (panel === 'hub') {
     return `<div class="menu-buttons settings-nav">
       <button class="btn big" data-panel="audio">Audio</button>
       <button class="btn big" data-panel="display">Display</button>
       <button class="btn big" data-panel="gameplay">Gameplay</button>
       <button class="btn big" data-panel="escorts">Escorts</button>
+      <button class="btn big" data-panel="wiki">Wiki</button>
       <button class="btn big" data-panel="save">Save</button>
       <button class="btn big" data-panel="about">About</button>
       <button class="btn big" data-panel="bug">Report a bug</button>
@@ -126,6 +143,9 @@ function panelBody(panel, { audio, slots, party }) {
       <p class="muted small">When locked, the join QR stays in the corner so others can scan it.</p>
     </div>`;
   }
+  if (panel === 'wiki') {
+    return wikiHtml(wikiSection);
+  }
   if (panel === 'save') {
     const filled = (slots || []).filter((s) => !s.empty);
     const fmt = (n) => Math.round(n).toLocaleString();
@@ -188,9 +208,14 @@ function panelBody(panel, { audio, slots, party }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared, onQrLock }) {
+function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSaveCleared, onQrLock }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
+    const wiki = e.target.closest('[data-wiki]');
+    if (wiki) {
+      setWiki(wiki.dataset.wiki);
+      return;
+    }
     const nav = e.target.closest('[data-panel]');
     if (nav) {
       setPanel(nav.dataset.panel);

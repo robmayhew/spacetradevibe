@@ -1,4 +1,4 @@
-import { SHIPS, WEAPONS } from '../data.js';
+import { SHIPS, WEAPONS, ENEMIES } from '../data.js';
 import { SHAPES, GLASS } from '../fx/shapes.js';
 
 function hex(n) {
@@ -161,6 +161,57 @@ function drawEscort(c, t) {
   ctx.restore();
 }
 
+function bounds(pts) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, maxX, minY, maxY, w: Math.max(0.01, maxX - minX), h: Math.max(0.01, maxY - minY) };
+}
+
+const ASTEROID_SIL = (() => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = 2.15 + (i % 3 === 0 ? 0.65 : i % 2 ? 0.1 : 0.35);
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return pts;
+})();
+
+function drawHostile(c, t, id) {
+  const { ctx, w, h } = size(c);
+  ctx.clearRect(0, 0, w, h);
+  if (w < 8 || h < 8) return;
+  const def = ENEMIES[id] || ENEMIES.scout;
+  const pts = id === 'asteroid' ? ASTEROID_SIL : (SHAPES[id] || SHAPES.scout);
+  const b = bounds(pts);
+  const scene = Math.max(b.w, b.h) + 1.4;
+  fit(ctx, w, h, scene, scene, 8);
+  ctx.translate(-(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2);
+  if (id === 'asteroid') ctx.rotate(t * 0.35);
+  else ctx.translate(0, Math.sin(t * 1.6) * 0.1);
+  poly(ctx, pts, 1, 0, 0);
+  ctx.fillStyle = hex(def.color);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.lineWidth = 0.12;
+  ctx.stroke();
+  const glass = GLASS[id];
+  if (glass) {
+    poly(ctx, glass, 1, 0, 0);
+    ctx.fillStyle = 'rgba(200, 232, 255, 0.35)';
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export function startPreviews(root) {
   const canvases = [...root.querySelectorAll('canvas[data-preview]')];
   if (!canvases.length) return () => {};
@@ -175,6 +226,7 @@ export function startPreviews(root) {
       if (kind === 'ship') drawShip(c, t, id);
       else if (kind === 'gun') drawGun(c, t, id);
       else if (kind === 'escort') drawEscort(c, t);
+      else if (kind === 'hostile') drawHostile(c, t, id);
     }
     requestAnimationFrame(tick);
   };

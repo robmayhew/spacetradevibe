@@ -2,10 +2,11 @@ import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER, SHIPS, SHIP_ORDER, ESCORT
 import {
   shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save, selectShip,
   extraMountSlots, extraMounts, weaponLevel, weaponLevelCost, buyWeaponLevel, setMount, weaponTuneStat,
-  escortLevel, escortUpgradeCost, buyEscortUpgrade,
+  escortLevel, escortUpgradeCost, buyEscortUpgrade, pacePressure, formatPace, formatHeat,
 } from '../state.js';
+import { paceMatchingEnabled } from '../prefs.js';
 import { hasShipUnlock, hasWeaponUnlock, shipFeel } from '../achievements.js';
-import { routeDifficulty } from '../galaxy.js';
+import { routeDifficulty, scanRange } from '../galaxy.js';
 import { tierCss } from '../views/starmap.js';
 import { startPreviews } from './preview.js';
 
@@ -182,6 +183,8 @@ export class StationScreen {
   }
 
   render() {
+    const body = this.root.querySelector('.tab-body');
+    const scroll = this.tab !== 'map' ? (body?.scrollTop || 0) : 0;
     this.stopPreviews?.();
     this.stopPreviews = null;
     const s = this.state;
@@ -189,6 +192,9 @@ export class StationScreen {
     const stats = shipStats(s);
     const rating = shipRating(s);
     const rc = repairCost(s);
+    const paceOn = s.paced !== false && paceMatchingEnabled();
+    const paceLabel = formatPace(pacePressure(s), paceOn);
+    const heatLabel = formatHeat(s);
     this.root.innerHTML = `
       <header class="st-header">
         <div class="st-title">
@@ -203,6 +209,8 @@ export class StationScreen {
             ${rc > 0 ? `<button class="btn small" data-act="repair" ${s.credits < rc ? 'disabled' : ''}>Repair · ${fmt(rc)} cr</button>` : '<span class="muted small">Fully repaired</span>'}
           </div>
           <div class="stat"><label>Ship rating</label><b class="rating">${rating}</b></div>
+          <div class="stat"><label>Pace</label><b>${paceLabel}</b></div>
+          ${heatLabel ? `<div class="stat"><label>Heat</label><b>${heatLabel}</b></div>` : ''}
         </div>
         <button class="btn ghost small" data-act="menu">Menu</button>
       </header>
@@ -235,6 +243,8 @@ export class StationScreen {
       this.game.backdrop.showShip = false;
       if (this.tab === 'ship') this.stopPreviews = startPreviews(this.root);
     }
+    const nextBody = this.root.querySelector('.tab-body');
+    if (nextBody && this.tab !== 'map') nextBody.scrollTop = scroll;
   }
 
   renderTab(stats, rating) {
@@ -246,19 +256,21 @@ export class StationScreen {
       <div class="map-info panel">${this.mapHint()}</div>
       <div class="map-legend panel">
         <div class="legend-row">${Array.from({ length: 10 }, (_, i) => `<span style="background:${tierCss(i + 1)}">${i + 1}</span>`).join('')}</div>
-        <div class="muted small">Route difficulty · Dim = unvisited · Ring = contract, colored by danger</div>
+        <div class="muted small">Bright = visited · Dim = scanned · Hidden = uncharted</div>
+        <div class="muted small">Lane Scanner · ${scanRange(this.state)} jumps · Ring = contract, colored by danger</div>
         <div class="legend-actions"><button class="btn small" data-act="here">Center on me</button><button class="btn small" data-act="fit">Show all</button></div>
       </div>`;
   }
 
   mapHint() {
-    return '<div class="muted">Drag to pan, scroll to zoom. Hover a system for details; click a ringed system to select its contract.</div>';
+    return '<div class="muted">Drag to pan, scroll to zoom. Only charted lanes are drawn. Hover a neighbor for details; click a ringed system to select its contract.</div>';
   }
 
   systemInfo(sys, rating) {
     const s = this.state;
     const contract = s.contracts.find((c) => c.dest === sys.id);
     const visited = s.visited.includes(sys.id);
+    const named = visited || sys.id === s.current || !!contract;
     let route = '';
     if (sys.id === s.current) route = '<div class="accent">You are here</div>';
     else if (contract) {
@@ -267,15 +279,21 @@ export class StationScreen {
     } else if (this.galaxy.systems[s.current].links.includes(sys.id)) {
       route = `<div>Route difficulty ${diffBadge(routeDifficulty(this.galaxy, s.current, sys.id))} · no contract offered</div>`;
     }
-    return `<h3>${sys.name}${sys.terminus ? ' ★' : ''}</h3>
-      <div>Tier ${diffBadge(sys.tier)} · ${visited ? 'Visited' : 'Unexplored'} · ${sys.links.length} lanes</div>
-      ${sys.terminus ? '<div class="accent">Final destination. Deliver here to win.</div>' : ''}
+    const title = named ? `${sys.name}${sys.terminus ? ' ★' : ''}` : 'Unexplored';
+    const meta = named
+      ? `Tier ${diffBadge(sys.tier)} · ${visited ? 'Visited' : 'Unexplored'} · ${sys.links.length} lanes`
+      : 'Uncharted neighbor';
+    return `<h3>${title}</h3>
+      <div>${meta}</div>
+      ${named && sys.terminus ? '<div class="accent">Final destination. Deliver here to win.</div>' : ''}
       ${route}`;
   }
 
   renderContracts(stats, rating) {
     const s = this.state;
     if (!s.contracts.length) return '<p class="muted">No contracts available.</p>';
+    const paceOn = s.paced !== false && paceMatchingEnabled();
+    const paceLabel = formatPace(pacePressure(s), paceOn);
     const cards = s.contracts
       .map((c) => {
         const dest = this.galaxy.systems[c.dest];
@@ -289,7 +307,7 @@ export class StationScreen {
               <div class="eyebrow">Destination${s.visited.includes(c.dest) ? '' : ' · Unexplored'}</div>
               <h2>${dest.name}${dest.terminus ? ' ★' : ''}</h2>
             </div>
-            <div class="c-diff"><label>Difficulty</label>${diffBadge(c.difficulty)}</div>
+            <div class="c-diff"><label>Difficulty</label>${diffBadge(c.difficulty)}<div class="muted small">Pace ${paceLabel}</div></div>
           </div>
           <div class="c-body">
             <div><label>Cargo</label><b>${c.good}</b></div>
@@ -441,7 +459,7 @@ export class StationScreen {
     return `
       <div class="sel-summary">
         ${c
-          ? `<span class="eyebrow">Selected</span> <b>${dest.name}</b> · ${c.good} ×${stats.cargo} · <b class="accent">${fmt(c.pay * stats.cargo)} cr</b> · Difficulty ${diffBadge(c.difficulty)} ${dangerTag(c.difficulty, shipRating(s))}`
+          ? `<span class="eyebrow">Selected</span> <b>${dest.name}</b> · ${c.good} ×${stats.cargo} · <b class="accent">${fmt(c.pay * stats.cargo)} cr</b> · Difficulty ${diffBadge(c.difficulty)} · Pace ${formatPace(pacePressure(s), s.paced !== false && paceMatchingEnabled())} ${dangerTag(c.difficulty, shipRating(s))}`
           : '<span class="muted">Select a destination contract to launch.</span>'}
       </div>
       <button class="btn ${risky ? 'danger' : 'primary'} launch" data-act="launch" ${c ? '' : 'disabled'}>${risky ? 'Launch anyway ▶' : 'Launch ▶'}</button>`;

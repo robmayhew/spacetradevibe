@@ -1,6 +1,6 @@
 import { generateGalaxy } from './galaxy.js';
 import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave } from './state.js';
+import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave, paceForBoard, formatPace, recordTerminusClear, formatHeat } from './state.js';
 import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
@@ -22,6 +22,7 @@ import {
   saveCallsign,
   submitRun,
   uniqueCallsign,
+  BOARD_SEASON,
 } from './score.js';
 import { VERSION } from './changelog.js';
 import { shouldShowWhatsNew } from './prefs.js';
@@ -323,6 +324,7 @@ export class Game {
         note: firstVisit ? `First visit to ${dest.name}. New lanes charted.` : '',
       };
       if (dest.terminus && !s.won) {
+        recordTerminusClear(s);
         s.won = true;
         const unlocks = checkAchievements(s, r);
         generateContracts(s, this.galaxy);
@@ -387,7 +389,9 @@ export class Game {
           <div class="r-line"><span>Ships lost</span><b>${s.stats.deaths}</b></div>
           <div class="r-line"><span>Systems visited</span><b>${s.visited.length} / ${this.galaxy.systems.length}</b></div>
           <div class="r-line"><span>Run time</span><b>${timeLabel}</b></div>
-          <div class="r-line"><span>Pace matching</span><b>${s.paced !== false ? 'On' : 'Off'}</b></div>
+          <div class="r-line"><span>Credits on hand</span><b>${fmt(s.credits)} cr</b></div>
+          <div class="r-line"><span>Pace matching</span><b>${s.paced !== false ? formatPace(s.paceAvg || s.paceLast || 1) : 'Off'}</b></div>
+          ${formatHeat(s) ? `<div class="r-line"><span>Lane heat</span><b>${formatHeat(s)}</b></div>` : ''}
           <div class="r-line"><span>Credits</span><b class="accent">+${fmt(score.earned)}</b></div>
           <div class="r-line"><span>Kills × 50</span><b class="accent">+${fmt(score.killPts)}</b></div>
           <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
@@ -455,6 +459,9 @@ export class Game {
         seed: s.seed,
         status: 'done',
         paced: s.paced !== false,
+        credits: Math.max(0, Math.round(s.credits || 0)),
+        pace: paceForBoard(s),
+        season: BOARD_SEASON,
       });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
@@ -487,6 +494,9 @@ export class Game {
       seed: s.seed,
       status: 'live',
       paced: s.paced !== false,
+      credits: Math.max(0, Math.round(s.credits || 0)),
+      pace: paceForBoard(s),
+      season: BOARD_SEASON,
     }).catch(() => {});
   }
 }

@@ -365,16 +365,18 @@ export function createBoardStore() {
     return n;
   }
 
-  function ranks(score, timeMs, rows) {
-    const rankScore = rows.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
-    const finished = rows.filter((r) => r.status === 'done');
+  function ranks(score, timeMs, rows, season = 'beta') {
+    const pool = rows.filter((r) => (r.season || 'beta') === season);
+    const rankScore = pool.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
+    const finished = pool.filter((r) => r.status === 'done');
     const rankTime = finished.filter((r) => r.time_ms < timeMs || (r.time_ms === timeMs && r.score > score)).length + 1;
     return { rank_score: rankScore, rank_time: rankTime };
   }
 
-  function visible(sort) {
+  function visible(sort, season = 'beta') {
     const stale = now() - 15 * 60 * 1000;
     return [...runs.values()].filter((r) => {
+      if ((r.season || 'beta') !== season) return false;
       if (r.status === 'void') return false;
       if (r.status === 'live') return sort !== 'time' && r.updated >= stale;
       return r.status === 'done';
@@ -382,19 +384,23 @@ export function createBoardStore() {
   }
 
   return {
-    board(sort) {
-      const rows = visible(sort).sort((a, b) =>
+    board(sort, season = 'beta') {
+      const rows = visible(sort, season).sort((a, b) =>
         sort === 'time'
           ? a.time_ms - b.time_ms || b.score - a.score
           : b.score - a.score || a.time_ms - b.time_ms,
       );
       return {
+        season,
         rows: rows.slice(0, 20).map((r, i) => ({
           callsign: r.callsign,
           score: r.score,
           time_ms: r.time_ms,
           status: r.status === 'live' ? 'live' : 'done',
           paced: r.paced !== false,
+          credits: r.credits || 0,
+          pace: r.pace || 100,
+          season: r.season || 'beta',
           rank: i + 1,
         })),
       };
@@ -432,6 +438,25 @@ export function createBoardStore() {
       const deliveries = intField(body, 'deliveries', 10000);
       const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : 0;
       const paced = body.paced === false || body.paced === 0 || body.paced === '0' ? false : true;
+      let credits = 0;
+      if (body.credits != null) {
+        credits = Math.trunc(Number(body.credits));
+        if (!Number.isInteger(credits) || credits < 0 || credits > 49999999) {
+          const err = new Error('Invalid credits.');
+          err.status = 400;
+          throw err;
+        }
+      }
+      let pace = 100;
+      if (body.pace != null) {
+        pace = Math.trunc(Number(body.pace));
+        if (!Number.isInteger(pace) || pace < 50 || pace > 200) {
+          const err = new Error('Invalid pace.');
+          err.status = 400;
+          throw err;
+        }
+      }
+      const season = String(body.season || 'beta').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16) || 'beta';
       const expected = earned + kills * 50 + bosses * 2500 - deaths * 1000;
       if (score !== expected) {
         const err = new Error('Invalid score.');
@@ -445,12 +470,12 @@ export function createBoardStore() {
         throw err;
       }
       if (prev?.status === 'void' || (prev?.status === 'done' && status === 'void')) {
-        return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()]) };
+        return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || 'beta') };
       }
       if (status === 'live' && prev) {
         const last = liveWrite.get(runId) || 0;
         if (now() - last < 30000) {
-          return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()]) };
+          return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || 'beta') };
         }
       }
       let nextStatus = status;
@@ -468,12 +493,15 @@ export function createBoardStore() {
         deliveries,
         seed,
         paced,
+        credits,
+        pace,
+        season,
         status: nextStatus,
         updated: now(),
       };
       runs.set(runId, row);
       if (status === 'live') liveWrite.set(runId, now());
-      return { ok: true, ...ranks(score, timeMs, [...runs.values()]) };
+      return { ok: true, ...ranks(score, timeMs, [...runs.values()], season) };
     },
   };
 }
@@ -597,7 +625,8 @@ export function partyDevPlugin() {
       return;
     }
     const sort = queryOf(req).get('sort') === 'time' ? 'time' : 'score';
-    jsonOk(res, board.board(sort));
+    const season = (queryOf(req).get('season') || 'beta').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16) || 'beta';
+    jsonOk(res, board.board(sort, season));
   }
 
   function handleScore(req, res) {

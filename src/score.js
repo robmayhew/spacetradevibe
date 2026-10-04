@@ -1,8 +1,11 @@
 import { SCORE } from './data.js';
+import { paceForBoard } from './state.js';
 
 const CALLSIGN_KEY = 'txl-trader-callsign';
 const API = '/api';
 
+export const BOARD_SEASON = 'beta';
+export const BOARD_SEASON_LABEL = 'Beta Season';
 export const CALLSIGN_RE = /^[A-Za-z0-9][A-Za-z0-9 -]{0,14}[A-Za-z0-9]$/;
 export const MIN_TIME_MS = 3 * 60 * 1000;
 
@@ -85,7 +88,7 @@ export function uniqueCallsign(desired, taken = []) {
 }
 
 export async function fetchBoard(sort = 'score') {
-  const res = await fetch(`${API}/board.php?sort=${sort === 'time' ? 'time' : 'score'}`);
+  const res = await fetch(`${API}/board.php?sort=${sort === 'time' ? 'time' : 'score'}&season=${encodeURIComponent(BOARD_SEASON)}`);
   if (!res.ok) throw new Error('offline');
   return res.json();
 }
@@ -122,6 +125,9 @@ function runPayload(state, status) {
     seed: state.seed ?? 0,
     status,
     paced: state.paced !== false,
+    credits: Math.max(0, Math.round(Number(state.credits) || 0)),
+    pace: paceForBoard(state),
+    season: BOARD_SEASON,
   };
 }
 

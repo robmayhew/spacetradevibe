@@ -5,7 +5,8 @@ import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, weaponLevelMult, weaponRateMult, canMountWeapon, MOUNT_RATE_MULT, MOUNT_DMG_MULT } from '../data.js';
-import { shipStats, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons } from '../state.js';
+import { shipStats, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons, recordPace, formatPace, heatMult, heatLevel } from '../state.js';
+import { paceMatchingEnabled } from '../prefs.js';
 import { shakeEnabled } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
@@ -71,11 +72,16 @@ export class TravelView {
     this.onDone = onDone;
     this.save = state;
     this.d = contract.difficulty;
-    const pressure = contract.infinite ? 1 : pacePressure(state);
+    const paced = !contract.infinite && state.paced !== false && paceMatchingEnabled();
+    const pace = paced ? pacePressure(state) : 1;
+    const pressure = contract.infinite ? 1 : pace * heatMult(state);
     this.pressure = pressure;
+    this.paceLabel = formatPace(pace, paced);
+    this.heat = heatLevel(state);
+    if (!contract.infinite) recordPace(state, pace);
     this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * pressure;
     this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
-    this.payMult = Math.pow(PAY_GROWTH, this.d - 1) * (pressure > 1 ? 1 + (pressure - 1) * 0.5 : 1);
+    this.payMult = Math.pow(PAY_GROWTH, this.d - 1) * (pace > 1 ? 1 + (pace - 1) * 0.5 : 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
     this.fireRate = (1.1 + 0.06 * (this.d - 1)) * pressure;
 
@@ -130,6 +136,8 @@ export class TravelView {
 
     this.hud = new TravelHUD(app.hud, {
       from, to, difficulty: this.d, owned: this.owned, mounts: this.mounts,
+      pace: this.paceLabel,
+      heat: this.heat,
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });

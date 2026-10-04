@@ -31,17 +31,33 @@ function json_error(int $status, string $message): void {
     json_out(['error' => $message], $status);
 }
 
-function ensure_runs_paced(PDO $pdo): void {
+function ensure_runs_board(PDO $pdo): void {
     static $done = false;
     if ($done) {
         return;
     }
     $done = true;
-    try {
-        $pdo->exec('ALTER TABLE runs ADD COLUMN paced TINYINT UNSIGNED NOT NULL DEFAULT 1');
-    } catch (PDOException $e) {
-        // column already exists
+    $alters = [
+        'ALTER TABLE runs ADD COLUMN paced TINYINT UNSIGNED NOT NULL DEFAULT 1',
+        'ALTER TABLE runs ADD COLUMN credits INT UNSIGNED NOT NULL DEFAULT 0',
+        'ALTER TABLE runs ADD COLUMN pace SMALLINT UNSIGNED NOT NULL DEFAULT 100',
+        'ALTER TABLE runs ADD COLUMN season VARCHAR(16) NOT NULL DEFAULT \'beta\'',
+    ];
+    foreach ($alters as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $e) {
+            // column already exists
+        }
     }
+}
+
+function board_season($raw): string {
+    $s = strtolower(preg_replace('/[^a-z0-9-]/', '', (string) $raw));
+    if ($s === '' || strlen($s) > 16) {
+        return 'beta';
+    }
+    return $s;
 }
 
 function client_ip(): string {

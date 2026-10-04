@@ -12,9 +12,12 @@ if ($sort === 'time') {
 }
 
 $pdo = db();
-ensure_runs_paced($pdo);
+ensure_runs_board($pdo);
 
-$st = $pdo->query("SELECT callsign, score, time_ms, status, paced FROM runs WHERE $where ORDER BY $order LIMIT 20");
+$season = board_season($_GET['season'] ?? 'beta');
+$where = "season = " . $pdo->quote($season) . " AND ($where)";
+
+$st = $pdo->query("SELECT callsign, score, time_ms, status, paced, credits, pace, season FROM runs WHERE $where ORDER BY $order LIMIT 20");
 $rows = [];
 $rank = 1;
 foreach ($st as $row) {
@@ -23,7 +26,10 @@ foreach ($st as $row) {
     $row['time_ms'] = (int) $row['time_ms'];
     $row['status'] = ($row['status'] ?? '') === 'live' ? 'live' : 'done';
     $row['paced'] = ((int) ($row['paced'] ?? 1)) !== 0;
+    $row['credits'] = (int) ($row['credits'] ?? 0);
+    $row['pace'] = (int) ($row['pace'] ?? 100);
+    $row['season'] = $row['season'] ?: 'beta';
     $rows[] = $row;
 }
 
-json_out(['rows' => $rows]);
+json_out(['rows' => $rows, 'season' => $season]);

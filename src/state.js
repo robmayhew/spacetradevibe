@@ -1,6 +1,6 @@
 import { SYSTEMS, SHIPS, WEAPONS, WEAPON_ORDER, GOODS, COST_GROWTH, PAY_GROWTH, ESCORT_BAY, WEAPON_MAX_LEVEL, canMountWeapon, weaponLevelMult, weaponRateMult } from './data.js';
 import { applyPersistentUnlocks, hasShipUnlock, hasWeaponUnlock } from './achievements.js';
-import { paceMatchingEnabled } from './prefs.js';
+import { paceMatchingEnabled, loadPrefs, savePrefs } from './prefs.js';
 import { routeDifficulty, systemDistance } from './galaxy.js';
 import { shuffle, pick, rand } from './rng.js';
 
@@ -39,6 +39,11 @@ export function newState(galaxy) {
     recentFlights: [],
     stats: { deliveries: 0, kills: 0, deaths: 0, earned: 0, bosses: 0, flights: 0 },
     paced: paceMatchingEnabled(),
+    paceLast: 1,
+    paceAvg: 1,
+    paceN: 0,
+    pacePeak: 1,
+    heat: startingHeat(),
   };
   applyPersistentUnlocks(s);
   s.hull = shipStats(s).maxHull;
@@ -320,6 +325,61 @@ export function pacePressure(state) {
   return p;
 }
 
+export function recordPace(state, pressure) {
+  const on = state?.paced !== false && paceMatchingEnabled();
+  const p = on ? Math.max(0.75, Math.min(1.2, Number(pressure) || 1)) : 1;
+  state.paceLast = p;
+  const n = Number(state.paceN) || 0;
+  state.paceAvg = n ? (state.paceAvg * n + p) / (n + 1) : p;
+  state.paceN = n + 1;
+  if (!Number.isFinite(state.pacePeak) || p > state.pacePeak) state.pacePeak = p;
+}
+
+export function formatPace(pressure, on = true) {
+  if (!on) return 'Off';
+  const p = Number(pressure);
+  if (!Number.isFinite(p)) return '×1.00';
+  return `×${p.toFixed(2)}`;
+}
+
+export function startingHeat() {
+  return Math.max(0, Math.min(3, Math.round(Number(loadPrefs().laneHeat) || 0)));
+}
+
+export function heatLevel(state) {
+  return Math.max(0, Math.min(3, Math.round(Number(state?.heat) || 0)));
+}
+
+export function heatMult(state) {
+  return 1 + 0.12 * heatLevel(state);
+}
+
+export function formatHeat(state) {
+  const n = heatLevel(state);
+  return n ? `+${n}` : '';
+}
+
+// After a Terminus clear, later flights and new saves on this device run hotter.
+// A short or deathless first clear stacks more heat (cap 3).
+export function recordTerminusClear(state) {
+  const short = (state.stats?.deliveries || 0) < 18;
+  const clean = (state.stats?.deaths || 0) === 0;
+  const bump = Math.min(3, 1 + (short ? 1 : 0) + (clean ? 1 : 0));
+  state.heat = Math.max(heatLevel(state), bump);
+  const prefs = loadPrefs();
+  savePrefs({
+    terminusWins: (prefs.terminusWins || 0) + 1,
+    laneHeat: Math.max(prefs.laneHeat || 0, short || clean ? Math.min(3, 2) : 1),
+  });
+  return state.heat;
+}
+
+export function paceForBoard(state) {
+  if (state?.paced === false) return 100;
+  const p = Number(state?.paceAvg || state?.paceLast || 1);
+  return Math.round((Number.isFinite(p) ? p : 1) * 100);
+}
+
 export function buyUpgrade(state, key) {
   const cost = upgradeCost(key, state.upgrades[key]);
   if (cost == null || state.credits < cost) return false;
@@ -354,6 +414,16 @@ function migrateSave(s) {
   if (!SHIPS[s.ship]) s.ship = 'hauler';
   if (!Array.isArray(s.recentFlights)) s.recentFlights = [];
   if (s.paced !== false) s.paced = true;
+  if (!Number.isFinite(s.paceLast)) s.paceLast = 1;
+  if (!Number.isFinite(s.paceAvg)) s.paceAvg = s.paceLast;
+  if (!Number.isInteger(s.paceN) || s.paceN < 0) s.paceN = 0;
+  if (!Number.isFinite(s.pacePeak)) s.pacePeak = s.paceLast;
+  if (!Number.isInteger(s.heat) || s.heat < 0) s.heat = 0;
+  s.heat = Math.max(0, Math.min(3, s.heat));
+  if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
+  for (const [k, def] of Object.entries(SYSTEMS)) {
+    if (!Number.isInteger(s.upgrades[k])) s.upgrades[k] = def.start;
+  }
   if (!Array.isArray(s.weapons) || !s.weapons.length) s.weapons = ['pulse'];
   normalizeLoadout(s);
   if (!s.callsign) {

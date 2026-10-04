@@ -3,7 +3,7 @@ import { tierCss } from '../views/starmap.js';
 
 // DOM overlay for the travel screen.
 export class TravelHUD {
-  constructor(root, { from, to, difficulty, owned, mounts = [], onResume, onRetreat }) {
+  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, onResume, onRetreat }) {
     this.root = root;
     root.innerHTML = `
       <div class="hud">
@@ -18,6 +18,8 @@ export class TravelHUD {
         <div class="hud-tr">
           <div class="route">${from} <span>→</span> ${to}</div>
           <div class="diff">Difficulty <b style="color:${tierCss(difficulty)}">${difficulty}</b></div>
+          <div class="pace">Pace <b class="pace-v">${pace}</b></div>
+          ${heat ? `<div class="heat">Heat <b>+${heat}</b></div>` : ''}
           <div class="bounty">Bounty <b class="bounty-v">0</b> cr</div>
         </div>
         <div class="hud-bc weapons">
@@ -47,6 +49,7 @@ export class TravelHUD {
       bounty: $('.bounty-v'), banner: $('.banner'), pause: $('.pause-overlay'), auto: $('.auto-v'),
       slots: [...root.querySelectorAll('.wslot')],
       mounts: [...root.querySelectorAll('.mount-pip')],
+      pace: $('.pace-v'),
     };
     this.el.pause.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;

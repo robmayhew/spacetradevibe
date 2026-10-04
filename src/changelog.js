@@ -1,6 +1,18 @@
-export const VERSION = '0.3.8';
+export const VERSION = '0.3.9';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.9',
+    notes: [
+      'Ship Systems stays scrolled when you buy or tune',
+      'Pace scaling sits under difficulty in flight and on contracts',
+      'Lane Records is Beta Season, with leftover cash and pace on each row',
+      'Settings includes a wiki for hostiles, guns, and how the lanes work',
+      'Wiki hostiles show a small silhouette of each hull',
+      'Star map fog charts two jumps; Lane Scanner upgrades see further',
+      'A first Terminus clear raises lane heat on later flights and new saves',
+    ],
+  },
   {
     version: '0.3.8',
     notes: [

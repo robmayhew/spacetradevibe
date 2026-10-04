@@ -47,6 +47,15 @@ export const SYSTEMS = {
     value: (l) => 40 + 6 * (l - 1),
     format: (v) => `${v} m/s`,
   },
+  scanner: {
+    name: 'Lane Scanner',
+    desc: 'How many jumps ahead the star map charts. Starts at two systems; upgrade it to see further.',
+    start: 1,
+    max: 4,
+    baseCost: 280,
+    value: (l) => 1 + l,
+    format: (v) => `${v} jump${v === 1 ? '' : 's'}`,
+  },
   cargo: {
     name: 'Cargo Hold',
     desc: 'More units per contract, which means bigger payouts.',
@@ -66,7 +75,7 @@ export const SYSTEMS = {
     format: (v) => (v <= 1 ? 'Primary only' : `${v} mounts`),
   },
 };
-export const SYSTEM_ORDER = ['core', 'hull', 'shield', 'engine', 'cargo', 'hardpoints'];
+export const SYSTEM_ORDER = ['core', 'hull', 'shield', 'engine', 'scanner', 'cargo', 'hardpoints'];
 
 export const WEAPON_MAX_LEVEL = 5;
 
@@ -336,38 +345,53 @@ export const WEAPON_ORDER = ['pulse', 'scatter', 'flak', 'seeker', 'rail', 'beam
 // Every type can appear on every route.
 export const ENEMIES = {
   scout: {
+    name: 'Scout',
+    desc: 'Light interceptors that weave as they close. Their bolts curve toward you.',
     hp: 20, speed: 14, contact: 36, bounty: 3, r: 1.8, color: 0xa04a3c,
     cost: 1, group: [3, 6], formations: ['line', 'column', 'v'],
     fire: { interval: [2.4, 3.8], dmg: 24, speed: 45, homing: 3.5 },
   },
   asteroid: {
+    name: 'Asteroid',
+    desc: 'Dead rock with no guns. A ram still hurts. Rocks do not count toward a wave’s hostile quota.',
     hp: 45, speed: 10, contact: 54, bounty: 2, r: 3, color: 0x6e665c,
     cost: 1, group: [2, 5], formations: ['scatter'],
   },
   fighter: {
+    name: 'Fighter',
+    desc: 'Hangs in the lane and shadows your heading. They stay until you kill them, and their shots home.',
     hp: 40, speed: 22, contact: 45, bounty: 5, r: 2.4, color: 0xa8773e,
     cost: 2, group: [1, 3], formations: ['scatter', 'v'],
     fire: { interval: [1.6, 2.4], dmg: 30, speed: 50, homing: 3.5 },
   },
   kamikaze: {
+    name: 'Diver',
+    desc: 'No guns. After a short run-up they lock onto you and ram. Fragile, but the hit is ugly.',
     hp: 14, speed: 48, contact: 75, bounty: 3, r: 1.5, color: 0xb8a046,
     cost: 1.2, group: [3, 6], formations: ['line', 'scatter'],
   },
   gunship: {
+    name: 'Gunship',
+    desc: 'A slow, thick hull that parks mid-lane and lobs straight bolts. Treat it as a small tank.',
     hp: 180, speed: 8, contact: 75, bounty: 15, r: 4.2, color: 0x66607e,
     cost: 6, group: [1, 2], formations: ['line'],
     fire: { interval: [2.3, 3], dmg: 30, speed: 38 },
   },
   sniper: {
+    name: 'Sniper',
+    desc: 'Holds the far end of the lane and fires fast, straight bursts. Keep moving when they light up.',
     hp: 70, speed: 12, contact: 45, bounty: 8, r: 2.6, color: 0x557a5c,
     cost: 3, group: [1, 3], formations: ['scatter'],
     fire: { interval: [2.8, 3.6], dmg: 39, speed: 85 },
   },
   boss: {
+    name: 'Capital ship',
+    desc: 'A rare extra wave. Huge hull, rotating fans and spirals of shot. Destroying one is worth a lot on the board.',
     hp: 1100, speed: 10, contact: 120, bounty: 100, r: 8, color: 0x7c3434,
     fire: { interval: [1, 1], dmg: 33, speed: 60, fanSpeed: 38, spiralSpeed: 34 },
   },
 };
+export const ENEMY_ORDER = ['scout', 'fighter', 'kamikaze', 'sniper', 'gunship', 'asteroid', 'boss'];
 
 // `tier` is the lowest route difficulty that offers the good.
 export const GOODS = [

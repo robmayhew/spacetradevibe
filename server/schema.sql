@@ -12,10 +12,14 @@ CREATE TABLE IF NOT EXISTS runs (
   seed BIGINT NOT NULL,
   status VARCHAR(8) NOT NULL DEFAULT 'done',
   paced TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  credits INT UNSIGNED NOT NULL DEFAULT 0,
+  pace SMALLINT UNSIGNED NOT NULL DEFAULT 100,
+  season VARCHAR(16) NOT NULL DEFAULT 'beta',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL,
   UNIQUE KEY run_id (run_id),
-  KEY status_updated (status, updated_at)
+  KEY status_updated (status, updated_at),
+  KEY season_status (season, status, score)
 );
 
 CREATE TABLE IF NOT EXISTS rate_hits (
