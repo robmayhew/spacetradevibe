@@ -28,20 +28,28 @@ export const CREDITS = [
   {
     role: 'Founded by',
     name: 'Rob Mayhew',
-    url: 'https://www.linkedin.com/in/robmayhew/',
+    url: 'mailto:rob.mayhew@gmail.com',
   },
   {
     role: 'Contributor',
     name: 'Jacky Tai',
     url: 'https://www.linkedin.com/in/jackytai/',
+    extra: [{ label: 'email', url: 'mailto:dev@itrealsimple.com' }],
   },
 ];
 
 export function creditsHtml() {
-  return CREDITS.map(
-    (c) =>
-      `${escapeHtml(c.role)} <a class="credit-link" href="${escapeAttr(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.name)}</a>`,
-  ).join(' <span class="credit-sep">·</span> ');
+  return CREDITS.map((c) => {
+    const extra = (c.extra || [])
+      .map((e) => ` <span class="credit-sep">·</span> ${creditLink(e.url, e.label)}`)
+      .join('');
+    return `${escapeHtml(c.role)} ${creditLink(c.url, c.name)}${extra}`;
+  }).join(' <span class="credit-sep">·</span> ');
+}
+
+function creditLink(url, label) {
+  const blank = /^https?:/i.test(url) ? ' target="_blank" rel="noopener noreferrer"' : '';
+  return `<a class="credit-link" href="${escapeAttr(url)}"${blank}>${escapeHtml(label)}</a>`;
 }
 
 function escapeHtml(s) {
