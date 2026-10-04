@@ -1,10 +1,31 @@
 import { CALLSIGN_RE } from '../score.js';
+import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
+import { dismissWhatsNew } from '../prefs.js';
 
-export function renderMenu(root, { hasSave, muted, callsign, onNew, onContinue, onToggleMute, onLeaderboard, onCallsign }) {
+export function renderMenu(root, {
+  hasSave,
+  callsign,
+  showWhatsNew = false,
+  onNew,
+  onContinue,
+  onLeaderboard,
+  onCallsign,
+  onSettings,
+}) {
+  const latest = CHANGELOG[0];
   root.innerHTML = `
     <div class="menu">
       <h1 class="logo">TXL<span>TRADER</span></h1>
       <p class="tagline">Haul cargo. Survive the lanes. Reach the Terminus.</p>
+      ${
+        showWhatsNew
+          ? `<div class="panel whats-new">
+        <p class="eyebrow">What's new in v${escapeHtml(VERSION)}</p>
+        <ul>${(latest?.notes || []).map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+        <button class="btn small" data-act="dismiss-new">Got it</button>
+      </div>`
+          : ''
+      }
       <div class="menu-buttons">
         <label class="callsign-field">
           Callsign
@@ -28,8 +49,10 @@ export function renderMenu(root, { hasSave, muted, callsign, onNew, onContinue, 
         </form>
         <p class="join-hint muted small hidden"></p>
         <button class="btn big" data-act="board">Leaderboard</button>
-        <button class="btn ghost" data-act="mute">Sound: ${muted ? 'Off' : 'On'}</button>
+        <button class="btn big" data-act="settings">Settings</button>
       </div>
+      <p class="menu-version muted small"><button type="button" class="version-link" data-act="about">v${escapeHtml(VERSION)}</button></p>
+      <p class="credits menu-credits">${creditsHtml()}</p>
       <div class="howto panel">
         <h3>How to play</h3>
         <ul>
@@ -80,10 +103,23 @@ export function renderMenu(root, { hasSave, muted, callsign, onNew, onContinue, 
       joinForm.querySelector('[data-room]')?.focus();
     }
     if (act === 'board') onLeaderboard();
-    if (act === 'mute') e.target.textContent = `Sound: ${onToggleMute() ? 'Off' : 'On'}`;
+    if (act === 'settings') onSettings?.();
+    if (act === 'about') onSettings?.('about');
+    if (act === 'dismiss-new') {
+      dismissWhatsNew(VERSION);
+      e.target.closest('.whats-new')?.remove();
+    }
   });
 }
 
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

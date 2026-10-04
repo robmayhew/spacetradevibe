@@ -59,7 +59,23 @@ CREATE TABLE IF NOT EXISTS party_live (
   KEY room_updated (room, updated_at)
 );
 
+CREATE TABLE IF NOT EXISTS feedback (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kind VARCHAR(16) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  body TEXT NOT NULL,
+  callsign VARCHAR(16) NOT NULL,
+  game_version VARCHAR(32) NOT NULL,
+  user_agent VARCHAR(512) NULL,
+  ip VARCHAR(45) NOT NULL,
+  hidden TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY kind_hidden_created (kind, hidden, created_at),
+  KEY ip_created (ip, created_at)
+);
+
 -- Existing Plesk DBs: run these after pull if the columns are missing.
 -- ALTER TABLE party_rooms ADD COLUMN frame MEDIUMTEXT NULL;
 -- ALTER TABLE runs ADD COLUMN status VARCHAR(8) NOT NULL DEFAULT 'done';
 -- ALTER TABLE runs ADD KEY status_updated (status, updated_at);
+-- CREATE TABLE feedback ... (see CREATE TABLE above if the table is missing).

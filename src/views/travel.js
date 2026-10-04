@@ -6,6 +6,7 @@ import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
 import { shipStats } from '../state.js';
+import { shakeEnabled } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
 
@@ -190,7 +191,8 @@ export class TravelView {
     this.cleanup();
 
     this.shake *= Math.exp(-8 * dt);
-    this.camera.position.set((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake, 0);
+    const shake = shakeEnabled() ? this.shake : 0;
+    this.camera.position.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, 0);
 
     const boss = this.enemies.find((e) => e.type === 'boss');
     this.hud.update({

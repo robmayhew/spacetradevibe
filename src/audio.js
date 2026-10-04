@@ -1,18 +1,26 @@
 // Tiny WebAudio synth for sound effects; no audio assets.
-const MUTE_KEY = 'txl-trader-muted';
+import { loadPrefs, savePrefs } from './prefs.js';
+
+const MASTER = 0.3;
 
 export class Sfx {
   constructor() {
     this.ctx = null;
     this.last = {};
-    try {
-      this.muted = localStorage.getItem(MUTE_KEY) === '1';
-    } catch {
-      this.muted = false;
-    }
+    const prefs = loadPrefs();
+    this.muted = prefs.muted;
+    this.volume = prefs.volume;
     const unlock = () => this.ensure();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
+  }
+
+  gainLevel() {
+    return this.muted ? 0 : MASTER * this.volume;
+  }
+
+  applyGain() {
+    if (this.master) this.master.gain.value = this.gainLevel();
   }
 
   ensure() {
@@ -21,7 +29,7 @@ export class Sfx {
       if (!AC) return false;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.3;
+      this.master.gain.value = this.gainLevel();
       this.master.connect(this.ctx.destination);
       const len = this.ctx.sampleRate;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -32,15 +40,24 @@ export class Sfx {
     return true;
   }
 
-  toggleMute() {
-    this.muted = !this.muted;
-    try {
-      localStorage.setItem(MUTE_KEY, this.muted ? '1' : '0');
-    } catch {
-      // ignore
-    }
-    if (this.master) this.master.gain.value = this.muted ? 0 : 0.3;
+  setMuted(muted) {
+    this.muted = !!muted;
+    savePrefs({ muted: this.muted });
+    this.applyGain();
+    if (this.muted) this.beam(false);
     return this.muted;
+  }
+
+  toggleMute() {
+    return this.setMuted(!this.muted);
+  }
+
+  setVolume(volume) {
+    const v = Math.max(0, Math.min(1, Number(volume) || 0));
+    this.volume = v;
+    savePrefs({ volume: v });
+    this.applyGain();
+    return this.volume;
   }
 
   tone({ type = 'square', freq = 440, freqEnd = freq, dur = 0.1, vol = 0.2, delay = 0 }) {
