@@ -1,6 +1,14 @@
-export const VERSION = '0.3.1';
+export const VERSION = '0.3.2';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.2',
+    notes: [
+      'Home screen shrinks on short windows so buttons and How to play stay on screen',
+      'Escort QR and room code live in Settings',
+      'Dice button rolls a random callsign',
+    ],
+  },
   {
     version: '0.3.1',
     notes: [

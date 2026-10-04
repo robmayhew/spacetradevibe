@@ -1,6 +1,6 @@
-import { CALLSIGN_RE } from '../score.js';
+import { CALLSIGN_RE, randomCallsign } from '../score.js';
 import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
-import { dismissWhatsNew, loadPrefs, savePrefs } from '../prefs.js';
+import { dismissWhatsNew } from '../prefs.js';
 
 export function renderMenu(root, {
   hasSave,
@@ -11,7 +11,6 @@ export function renderMenu(root, {
   onLeaderboard,
   onCallsign,
   onSettings,
-  onQrChange,
 }) {
   const latest = CHANGELOG[0];
   root.innerHTML = `
@@ -28,10 +27,13 @@ export function renderMenu(root, {
           : ''
       }
       <div class="menu-buttons">
-        <label class="callsign-field">
-          Callsign
-          <input type="text" maxlength="16" spellcheck="false" autocomplete="nickname" data-callsign value="${escapeAttr(callsign || '')}">
-        </label>
+        <div class="callsign-row">
+          <label class="callsign-field">
+            Callsign
+            <input type="text" maxlength="16" spellcheck="false" autocomplete="nickname" data-callsign value="${escapeAttr(callsign || '')}">
+          </label>
+          <button type="button" class="btn callsign-roll" data-act="roll" title="Random callsign" aria-label="Random callsign">⚄</button>
+        </div>
         <p class="callsign-hint muted small">Lane Records uses this name while you fly and when you arrive.</p>
         ${hasSave ? '<button class="btn primary big" data-act="continue">Continue</button>' : ''}
         <button class="btn ${hasSave ? '' : 'primary'} big" data-act="new">New Game</button>
@@ -50,7 +52,6 @@ export function renderMenu(root, {
         </form>
         <p class="join-hint muted small hidden"></p>
         <button class="btn big" data-act="board">Leaderboard</button>
-        <button class="btn big" data-act="qr">${qrKeepLabel(loadPrefs().showQr)}</button>
         <button class="btn big" data-act="settings">Settings</button>
       </div>
       <p class="menu-version muted small"><button type="button" class="version-link" data-act="about">v${escapeHtml(VERSION)}</button></p>
@@ -104,13 +105,13 @@ export function renderMenu(root, {
       joinForm.classList.remove('hidden');
       joinForm.querySelector('[data-room]')?.focus();
     }
-    if (act === 'board') onLeaderboard();
-    if (act === 'qr') {
-      const next = !loadPrefs().showQr;
-      savePrefs({ showQr: next });
-      e.target.closest('[data-act="qr"]').textContent = qrKeepLabel(next);
-      onQrChange?.(next);
+    if (act === 'roll') {
+      const name = randomCallsign();
+      nameInput.value = name;
+      onCallsign?.(name);
+      return;
     }
+    if (act === 'board') onLeaderboard();
     if (act === 'settings') onSettings?.();
     if (act === 'about') onSettings?.('about');
     if (act === 'dismiss-new') {
@@ -118,10 +119,6 @@ export function renderMenu(root, {
       e.target.closest('.whats-new')?.remove();
     }
   });
-}
-
-function qrKeepLabel(on) {
-  return `Escort QR: Keep ${on ? 'on' : 'off'}`;
 }
 
 function escapeAttr(s) {

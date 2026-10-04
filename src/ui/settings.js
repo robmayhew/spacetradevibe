@@ -8,13 +8,14 @@ const PANELS = {
   hub: 'Settings',
   audio: 'Audio',
   display: 'Display',
+  escorts: 'Escorts',
   save: 'Save',
   about: 'About',
   bug: 'Report a bug',
   feature: 'Feature requests',
 };
 
-export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSaveCleared, onQrChange }) {
+export function renderSettings(root, { audio, party, initialPanel = 'hub', onBack, onSaveCleared }) {
   let panel = PANELS[initialPanel] ? initialPanel : 'hub';
   let hasSave = !!load();
 
@@ -22,8 +23,8 @@ export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSa
     root.innerHTML = `
       <div class="menu settings-menu">
         <h1 class="logo">SET<span>TINGS</span></h1>
-        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, save, version history, and feedback.' : PANELS[panel])}</p>
-        ${panelBody(panel, { audio, hasSave })}
+        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, escorts, save, version history, and feedback.' : PANELS[panel])}</p>
+        ${panelBody(panel, { audio, hasSave, party })}
         <div class="menu-buttons">
           ${panel === 'hub' ? '<button class="btn big" data-act="back">Back</button>' : '<button class="btn big" data-act="hub">Back to Settings</button>'}
         </div>
@@ -41,18 +42,19 @@ export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSa
       },
       onBack,
       onSaveCleared,
-      onQrChange,
+      party,
     });
   };
 
   draw();
 }
 
-function panelBody(panel, { audio, hasSave }) {
+function panelBody(panel, { audio, hasSave, party }) {
   if (panel === 'hub') {
     return `<div class="menu-buttons settings-nav">
       <button class="btn big" data-panel="audio">Audio</button>
       <button class="btn big" data-panel="display">Display</button>
+      <button class="btn big" data-panel="escorts">Escorts</button>
       <button class="btn big" data-panel="save">Save</button>
       <button class="btn big" data-panel="about">About</button>
       <button class="btn big" data-panel="bug">Report a bug</button>
@@ -81,10 +83,6 @@ function panelBody(panel, { audio, hasSave }) {
         <button class="btn small" data-act="shake">Shake: ${prefs.shake ? 'On' : 'Off'}</button>
       </div>
       <div class="settings-row">
-        <span>Escort QR</span>
-        <button class="btn small" data-act="qr">Escort QR: Keep ${prefs.showQr ? 'on' : 'off'}</button>
-      </div>
-      <div class="settings-row">
         <span>Pace matching</span>
         <button class="btn small" data-act="pace">Pace matching: ${prefs.paceMatching ? 'On' : 'Off'}</button>
       </div>
@@ -93,6 +91,25 @@ function panelBody(panel, { audio, hasSave }) {
         <span>Fullscreen</span>
         <button class="btn small" data-act="fullscreen">${full ? 'Exit fullscreen' : 'Enter fullscreen'}</button>
       </div>
+    </div>`;
+  }
+  if (panel === 'escorts') {
+    const snap = party?.snapshot?.() || {};
+    const qr = snap.qrSrc
+      ? `<img class="settings-qr" src="${escapeAttr(snap.qrSrc)}" alt="Join QR">`
+      : '';
+    const code = snap.room ? `<div class="party-code">${escapeHtml(snap.room)}</div>` : '';
+    const crew = snap.crewHtml
+      ? `<ul class="party-crew settings-crew">${snap.crewHtml}</ul>`
+      : '';
+    const note = snap.ready
+      ? 'Scan to join as an escort, or enter the room code on a phone or laptop.'
+      : snap.offline || 'Escorts are offline.';
+    return `<div class="panel settings-panel escorts-panel">
+      <p class="muted small">${escapeHtml(note)}</p>
+      ${qr}
+      ${code}
+      ${crew}
     </div>`;
   }
   if (panel === 'save') {
@@ -146,7 +163,7 @@ function panelBody(panel, { audio, hasSave }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared, onQrChange }) {
+function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
     const nav = e.target.closest('[data-panel]');
@@ -175,13 +192,6 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       const next = !loadPrefs().shake;
       savePrefs({ shake: next });
       e.target.closest('[data-act="shake"]').textContent = `Shake: ${next ? 'On' : 'Off'}`;
-      return;
-    }
-    if (act === 'qr') {
-      const next = !loadPrefs().showQr;
-      savePrefs({ showQr: next });
-      e.target.closest('[data-act="qr"]').textContent = `Escort QR: Keep ${next ? 'on' : 'off'}`;
-      onQrChange?.(next);
       return;
     }
     if (act === 'pace') {

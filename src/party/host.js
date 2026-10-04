@@ -1,7 +1,6 @@
 import QRCode from 'qrcode/lib/browser.js';
 import { partyPost } from './api.js';
 import { escortHex } from './colors.js';
-import { loadPrefs, savePrefs } from '../prefs.js';
 
 const ROOM_KEY = 'txl-party-host';
 
@@ -27,29 +26,32 @@ export class PartyHost {
     this.root.innerHTML = `
       <div class="party-panel hidden">
         <div class="eyebrow">Escorts</div>
-        <img class="party-qr" alt="Join QR" title="Hide QR" />
-        <button type="button" class="party-show hidden">QR code</button>
+        <img class="party-qr hidden" alt="Join QR" />
         <div class="party-code"></div>
-        <p class="muted small party-hint">Scan or enter the code on a phone or laptop</p>
         <ul class="party-crew"></ul>
       </div>`;
     this.el = {
       panel: this.root.querySelector('.party-panel'),
       qr: this.root.querySelector('.party-qr'),
-      show: this.root.querySelector('.party-show'),
       code: this.root.querySelector('.party-code'),
       crew: this.root.querySelector('.party-crew'),
     };
-    this.el.qr.addEventListener('click', () => this.setQrVisible(false, true));
-    this.el.show.addEventListener('click', () => this.setQrVisible(true, true));
   }
 
-  setQrVisible(on, persist = false) {
+  snapshot() {
+    return {
+      ready: this.ready,
+      room: this.room || '',
+      qrSrc: this.el.qr?.getAttribute('src') || '',
+      crewHtml: this.el.crew?.innerHTML || '',
+      offline: this.ready ? '' : (this.el.crew?.textContent || 'Escorts are offline.'),
+    };
+  }
+
+  setQrVisible(on) {
     this.el.panel.classList.toggle('qr-hidden', !on);
     this.el.qr.classList.toggle('hidden', !on);
-    this.el.show.classList.toggle('hidden', on);
     document.body.classList.toggle('party-qr-hidden', !on);
-    if (persist) savePrefs({ showQr: !!on });
   }
 
   async start() {
@@ -71,7 +73,6 @@ export class PartyHost {
       console.warn('Party escorts offline:', err);
       this.el.panel.classList.remove('hidden');
       this.el.qr.classList.add('hidden');
-      this.el.show.classList.add('hidden');
       this.el.code.textContent = '';
       this.el.crew.innerHTML = `<li class="muted">${err.message || 'Escorts are offline.'}</li>`;
     }
@@ -91,7 +92,7 @@ export class PartyHost {
     this.el.code.textContent = this.room;
     this.el.panel.classList.remove('hidden');
     document.body.classList.add('has-party');
-    this.setQrVisible(loadPrefs().showQr);
+    this.setQrVisible(false);
     this.renderCrew();
     this.pollTimer = window.setInterval(() => this.poll(), 100);
   }

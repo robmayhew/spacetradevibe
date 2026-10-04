@@ -92,7 +92,6 @@ export class Game {
       onLeaderboard: () => this.showLeaderboard(),
       onSettings: (panel) => this.showSettings(panel),
       onCallsign: (name) => saveCallsign(name),
-      onQrChange: (on) => this.app.party?.setQrVisible(on),
     });
   }
 
@@ -109,12 +108,12 @@ export class Game {
     this.app.setView(this.backdrop);
     renderSettings(this.app.ui, {
       audio: this.app.audio,
+      party: this.app.party,
       initialPanel: panel || 'hub',
       onBack: () => this.showMenu(),
       onSaveCleared: () => {
         this.state = null;
       },
-      onQrChange: (on) => this.app.party?.setQrVisible(on),
     });
   }
 
