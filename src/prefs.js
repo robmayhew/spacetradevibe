@@ -10,6 +10,7 @@ const DEFAULTS = {
   volume: 1,
   shake: true,
   paceMatching: true,
+  showQr: false,
   seenVersion: null,
 };
 
@@ -47,6 +48,7 @@ export function loadPrefs() {
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
     shake: merged.shake !== false,
     paceMatching: merged.paceMatching !== false,
+    showQr: !!merged.showQr,
     seenVersion: typeof merged.seenVersion === 'string' ? merged.seenVersion : null,
   };
 }
@@ -57,6 +59,7 @@ export function savePrefs(partial) {
   next.muted = !!next.muted;
   next.shake = next.shake !== false;
   next.paceMatching = next.paceMatching !== false;
+  next.showQr = !!next.showQr;
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(next));
     localStorage.setItem(MUTE_LEGACY, next.muted ? '1' : '0');

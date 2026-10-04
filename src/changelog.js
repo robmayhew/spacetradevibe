@@ -7,6 +7,7 @@ export const CHANGELOG = [
       'Achievement hulls in the station hangar, kept on this device',
       'Flak, Rail Lance, Swarm Darts, and Nova Ring',
       'Pace matching that eases or tightens combat from recent flights, with a Display toggle',
+      'Escort QR Keep on / Keep off on the main menu and in Display settings',
     ],
   },
   {

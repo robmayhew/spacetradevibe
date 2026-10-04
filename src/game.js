@@ -91,6 +91,7 @@ export class Game {
       onLeaderboard: () => this.showLeaderboard(),
       onSettings: (panel) => this.showSettings(panel),
       onCallsign: (name) => saveCallsign(name),
+      onQrChange: (on) => this.app.party?.setQrVisible(on),
     });
   }
 
@@ -112,6 +113,7 @@ export class Game {
       onSaveCleared: () => {
         this.state = null;
       },
+      onQrChange: (on) => this.app.party?.setQrVisible(on),
     });
   }
 

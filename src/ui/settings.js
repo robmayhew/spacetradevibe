@@ -14,7 +14,7 @@ const PANELS = {
   feature: 'Feature requests',
 };
 
-export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSaveCleared }) {
+export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSaveCleared, onQrChange }) {
   let panel = PANELS[initialPanel] ? initialPanel : 'hub';
   let hasSave = !!load();
 
@@ -41,6 +41,7 @@ export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSa
       },
       onBack,
       onSaveCleared,
+      onQrChange,
     });
   };
 
@@ -78,6 +79,10 @@ function panelBody(panel, { audio, hasSave }) {
       <div class="settings-row">
         <span>Screen shake</span>
         <button class="btn small" data-act="shake">Shake: ${prefs.shake ? 'On' : 'Off'}</button>
+      </div>
+      <div class="settings-row">
+        <span>Escort QR</span>
+        <button class="btn small" data-act="qr">Escort QR: Keep ${prefs.showQr ? 'on' : 'off'}</button>
       </div>
       <div class="settings-row">
         <span>Pace matching</span>
@@ -141,7 +146,7 @@ function panelBody(panel, { audio, hasSave }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared }) {
+function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared, onQrChange }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
     const nav = e.target.closest('[data-panel]');
@@ -170,6 +175,13 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       const next = !loadPrefs().shake;
       savePrefs({ shake: next });
       e.target.closest('[data-act="shake"]').textContent = `Shake: ${next ? 'On' : 'Off'}`;
+      return;
+    }
+    if (act === 'qr') {
+      const next = !loadPrefs().showQr;
+      savePrefs({ showQr: next });
+      e.target.closest('[data-act="qr"]').textContent = `Escort QR: Keep ${next ? 'on' : 'off'}`;
+      onQrChange?.(next);
       return;
     }
     if (act === 'pace') {

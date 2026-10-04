@@ -1,6 +1,7 @@
 import QRCode from 'qrcode/lib/browser.js';
 import { partyPost } from './api.js';
 import { escortHex } from './colors.js';
+import { loadPrefs, savePrefs } from '../prefs.js';
 
 const ROOM_KEY = 'txl-party-host';
 
@@ -39,15 +40,16 @@ export class PartyHost {
       code: this.root.querySelector('.party-code'),
       crew: this.root.querySelector('.party-crew'),
     };
-    this.el.qr.addEventListener('click', () => this.setQrVisible(false));
-    this.el.show.addEventListener('click', () => this.setQrVisible(true));
+    this.el.qr.addEventListener('click', () => this.setQrVisible(false, true));
+    this.el.show.addEventListener('click', () => this.setQrVisible(true, true));
   }
 
-  setQrVisible(on) {
+  setQrVisible(on, persist = false) {
     this.el.panel.classList.toggle('qr-hidden', !on);
     this.el.qr.classList.toggle('hidden', !on);
     this.el.show.classList.toggle('hidden', on);
     document.body.classList.toggle('party-qr-hidden', !on);
+    if (persist) savePrefs({ showQr: !!on });
   }
 
   async start() {
@@ -89,7 +91,7 @@ export class PartyHost {
     this.el.code.textContent = this.room;
     this.el.panel.classList.remove('hidden');
     document.body.classList.add('has-party');
-    this.setQrVisible(false);
+    this.setQrVisible(loadPrefs().showQr);
     this.renderCrew();
     this.pollTimer = window.setInterval(() => this.poll(), 100);
   }
