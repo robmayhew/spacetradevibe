@@ -1,5 +1,5 @@
 import { generateGalaxy } from './galaxy.js';
-import { SYSTEMS, WEAPON_ORDER } from './data.js';
+import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
 import { newState, generateContracts, shipStats, towFee, save, load, recordFlight } from './state.js';
 import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
@@ -11,6 +11,7 @@ import { renderLeaderboard } from './ui/leaderboard.js';
 import { renderSettings } from './ui/settings.js';
 import { StationScreen } from './ui/station.js';
 import {
+  abandonRun,
   CALLSIGN_RE,
   ensureCallsign,
   formatRunTime,
@@ -122,8 +123,10 @@ export class Game {
     this.starmap = new StarMapView(this.galaxy, this.app.pixelRatio);
   }
 
-  newGame() {
+  async newGame() {
     this.app.audio.play('click');
+    const prev = load();
+    if (hasRunClock(prev)) await abandonRun(prev);
     this.setGalaxy(Math.floor(Math.random() * 2 ** 31));
     this.state = newState(this.galaxy);
     generateContracts(this.state, this.galaxy);
@@ -356,7 +359,7 @@ export class Game {
           <div class="r-line"><span>Credits</span><b class="accent">+${fmt(score.earned)}</b></div>
           <div class="r-line"><span>Kills × 50</span><b class="accent">+${fmt(score.killPts)}</b></div>
           <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
-          <div class="r-line"><span>Ships lost × 10,000</span><b class="warn">−${fmt(score.deathPts)}</b></div>
+          <div class="r-line"><span>Ships lost × ${fmt(SCORE.death)}</span><b class="warn">−${fmt(score.deathPts)}</b></div>
           <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
           ${unlocks.length ? unlocks.map((u) => `<div class="r-line"><span>${u.name}</span><b class="accent">${u.reward}</b></div>`).join('') : ''}
           ${

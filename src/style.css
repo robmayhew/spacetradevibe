@@ -259,7 +259,10 @@ body.has-party.party-qr-hidden .map-info { left: 140px; }
 .st-header, .tabs, .st-footer { position: relative; z-index: 2; }
 body.has-party .menu { padding-bottom: 190px; }
 body.has-party.party-qr-hidden .menu { padding-bottom: 96px; }
-body.has-party:has(.station) .party-panel { bottom: 84px; }
+body.has-party:has(.station) .tab-body:not(.tab-map),
+body.has-party:has(.station) .st-footer { padding-left: 176px; }
+body.has-party.party-qr-hidden:has(.station) .tab-body:not(.tab-map),
+body.has-party.party-qr-hidden:has(.station) .st-footer { padding-left: 140px; }
 
 /* Docking HUD */
 .objective { margin-top: 6px; font-family: var(--body); font-size: 18px; color: var(--text); letter-spacing: 0.02em; }
@@ -269,7 +272,7 @@ body.has-party:has(.station) .party-panel { bottom: 84px; }
 .dock-hint.show { opacity: 1; }
 
 #party { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
-.party-panel { pointer-events: auto; position: absolute; bottom: 16px; left: 14px; width: 148px; padding: 10px 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.party-panel { pointer-events: auto; position: absolute; bottom: 16px; left: 14px; width: 148px; padding: 10px 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 3px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
 .party-qr { width: 128px; height: 128px; border-radius: 2px; background: #ddd6c8; cursor: pointer; }
 .party-panel.qr-hidden { width: auto; min-width: 108px; }
 .party-panel.qr-hidden .party-hint { display: none; }

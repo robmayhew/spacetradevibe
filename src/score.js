@@ -89,3 +89,32 @@ export async function submitRun(payload) {
   }
   return data;
 }
+
+function runPayload(state, status) {
+  const score = runScore(state.stats);
+  const callsign = loadCallsign().trim() || ensureCallsign();
+  return {
+    run_id: state.runId,
+    callsign,
+    score: score.total,
+    time_ms: Math.round(Number.isFinite(state.runMs) ? state.runMs : 0),
+    earned: state.stats?.earned ?? 0,
+    kills: state.stats?.kills ?? 0,
+    bosses: state.stats?.bosses ?? 0,
+    deaths: state.stats?.deaths ?? 0,
+    deliveries: state.stats?.deliveries ?? 0,
+    seed: state.seed ?? 0,
+    status,
+  };
+}
+
+export async function abandonRun(state) {
+  if (!hasRunClock(state) || state.won || state.cheated) return;
+  const payload = runPayload(state, 'void');
+  if (!CALLSIGN_RE.test(payload.callsign)) return;
+  try {
+    await submitRun(payload);
+  } catch {
+    // board may be offline; the local save is still replaced
+  }
+}

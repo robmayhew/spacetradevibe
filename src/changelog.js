@@ -1,6 +1,15 @@
-export const VERSION = '0.3.0';
+export const VERSION = '0.3.1';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.1',
+    notes: [
+      'Starting a new game or deleting a save drops that run\'s open Lane Records row',
+      'Escort chip stays off the Ship Systems cards',
+      'Ship-lost score penalty is 1,000 instead of 10,000',
+      'Undocking names the nose-up heading toward the departure gate',
+    ],
+  },
   {
     version: '0.3.0',
     notes: [

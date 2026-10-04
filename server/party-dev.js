@@ -352,8 +352,9 @@ export function createBoardStore() {
   function visible(sort) {
     const stale = now() - 15 * 60 * 1000;
     return [...runs.values()].filter((r) => {
+      if (r.status === 'void') return false;
       if (r.status === 'live') return sort !== 'time' && r.updated >= stale;
-      return true;
+      return r.status === 'done';
     });
   }
 
@@ -393,7 +394,7 @@ export function createBoardStore() {
         err.status = 400;
         throw err;
       }
-      const status = body.status === 'live' ? 'live' : 'done';
+      const status = body.status === 'live' ? 'live' : body.status === 'void' ? 'void' : 'done';
       const timeMs = intField(body, 'time_ms', 7 * 24 * 60 * 60 * 1000);
       if (status === 'done' && timeMs < 3 * 60 * 1000) {
         const err = new Error('Runs under 3 minutes are not posted.');
@@ -406,7 +407,7 @@ export function createBoardStore() {
       const deaths = intField(body, 'deaths', 1000);
       const deliveries = intField(body, 'deliveries', 10000);
       const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : 0;
-      const expected = earned + kills * 50 + bosses * 2500 - deaths * 10000;
+      const expected = earned + kills * 50 + bosses * 2500 - deaths * 1000;
       if (score !== expected) {
         const err = new Error('Invalid score.');
         err.status = 400;
@@ -418,12 +419,18 @@ export function createBoardStore() {
         err.status = 409;
         throw err;
       }
+      if (prev?.status === 'void' || (prev?.status === 'done' && status === 'void')) {
+        return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()]) };
+      }
       if (status === 'live' && prev) {
         const last = liveWrite.get(runId) || 0;
         if (now() - last < 30000) {
           return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()]) };
         }
       }
+      let nextStatus = status;
+      if (prev?.status === 'done') nextStatus = 'done';
+      else if (prev?.status === 'void') nextStatus = 'void';
       const row = {
         run_id: runId,
         callsign,
@@ -435,7 +442,7 @@ export function createBoardStore() {
         deaths,
         deliveries,
         seed,
-        status: prev?.status === 'done' ? 'done' : status,
+        status: nextStatus,
         updated: now(),
       };
       runs.set(runId, row);

@@ -323,9 +323,9 @@ export const GOODS = [
 ];
 
 // Terminus run score. Credits are the main term; kills and capital ships
-// can still move a rank. Each lost ship is a large penalty.
+// can still move a rank. Each lost ship costs 1,000.
 export const SCORE = {
   kill: 50,
   boss: 2500,
-  death: 10000,
+  death: 1000,
 };

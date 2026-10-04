@@ -1,7 +1,7 @@
 import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
 import { fetchFeatures, submitFeedback } from '../feedback.js';
-import { CALLSIGN_RE, ensureCallsign } from '../score.js';
+import { abandonRun, CALLSIGN_RE, ensureCallsign } from '../score.js';
 import { clearSave, load } from '../state.js';
 
 const PANELS = {
@@ -100,7 +100,7 @@ function panelBody(panel, { audio, hasSave }) {
       <p class="muted">${hasSave ? 'A local save is on this device.' : 'No save on this device.'}</p>
       <button class="btn danger" data-act="delete-save" ${hasSave ? '' : 'disabled'}>Delete save</button>
       <div class="confirm delete-confirm hidden">
-        <p>Delete your current save? This cannot be undone.</p>
+        <p>Delete your current save? This cannot be undone. Its open Lane Records row will be dropped.</p>
         <button class="btn danger" data-act="delete-confirm">Delete</button>
         <button class="btn" data-act="delete-cancel">Cancel</button>
       </div>
@@ -210,6 +210,7 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       return;
     }
     if (act === 'delete-confirm') {
+      await abandonRun(load());
       clearSave();
       onSaveCleared?.();
       refreshSave();

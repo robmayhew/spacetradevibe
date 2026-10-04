@@ -36,7 +36,7 @@ export function renderMenu(root, {
         ${hasSave ? '<button class="btn primary big" data-act="continue">Continue</button>' : ''}
         <button class="btn ${hasSave ? '' : 'primary'} big" data-act="new">New Game</button>
         <div class="confirm hidden">
-          <p>Start over? Your current save will be overwritten.</p>
+          <p>Start over? Your current save will be overwritten, and its open Lane Records row will be dropped.</p>
           <button class="btn danger" data-act="new-confirm">Overwrite</button>
           <button class="btn" data-act="new-cancel">Cancel</button>
         </div>
