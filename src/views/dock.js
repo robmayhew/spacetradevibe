@@ -104,7 +104,7 @@ export class DockView {
     this.target.assigned = true;
     this.styleAssignedPad();
 
-    const ship = createPlayerShip();
+    const ship = createPlayerShip(undefined, { ship: state.ship || 'hauler' });
     this.ship = ship;
     this.scene.add(ship.group);
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };
@@ -340,6 +340,7 @@ export class DockView {
         break;
       }
       case 'clearance':
+        this.hint = 'Nose points up · thrust toward the gate';
         if (this.phaseT > 1.2) this.setPhase('fly');
         break;
       case 'fly':
@@ -350,6 +351,9 @@ export class DockView {
           this.hint = '';
           this.audio.play('launch');
           this.hud.banner('Departing', 'Engaging drive…');
+        } else {
+          const armTop = this.L.hubY + this.L.armLen + PAD_R;
+          this.hint = p.y < armTop ? 'Nose points up · thrust toward the gate' : '';
         }
         break;
       case 'docked':
@@ -455,7 +459,7 @@ export class DockView {
     // Guide line to the objective
     const pos = this.guide.geometry.attributes.position;
     const tgt = this.mode === 'dock' ? this.padWorld(this.target) : { x: this.L.gateX, y: 46 };
-    const showGuide = this.phase === 'fly' && !p.attached;
+    const showGuide = this.mode === 'undock' ? this.phase === 'clearance' || this.phase === 'fly' : this.phase === 'fly' && !p.attached;
     this.guide.visible = showGuide;
     if (showGuide) {
       pos.setXYZ(0, p.x, p.y, 0.1);

@@ -1,29 +1,38 @@
 import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
 import { fetchFeatures, submitFeedback } from '../feedback.js';
-import { CALLSIGN_RE, ensureCallsign } from '../score.js';
-import { clearSave, load } from '../state.js';
+import { abandonRun, CALLSIGN_RE, ensureCallsign } from '../score.js';
+import { clearSave, listSlots, peekSlot, load, save } from '../state.js';
+import { wikiHtml } from './wiki.js';
+import { startPreviews } from './preview.js';
 
 const PANELS = {
   hub: 'Settings',
   audio: 'Audio',
   display: 'Display',
+  gameplay: 'Gameplay',
+  escorts: 'Escorts',
+  wiki: 'Wiki',
   save: 'Save',
   about: 'About',
   bug: 'Report a bug',
   feature: 'Feature requests',
 };
 
-export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSaveCleared }) {
+export function renderSettings(root, { audio, party, initialPanel = 'hub', onBack, onSaveCleared, onQrLock }) {
   let panel = PANELS[initialPanel] ? initialPanel : 'hub';
-  let hasSave = !!load();
+  let wikiSection = 'hostiles';
+  let slots = listSlots();
+  let stopWikiPreviews = null;
 
   const draw = () => {
+    stopWikiPreviews?.();
+    stopWikiPreviews = null;
     root.innerHTML = `
       <div class="menu settings-menu">
         <h1 class="logo">SET<span>TINGS</span></h1>
-        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, save, version history, and feedback.' : PANELS[panel])}</p>
-        ${panelBody(panel, { audio, hasSave })}
+        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, gameplay, escorts, wiki, save, version history, and feedback.' : PANELS[panel])}</p>
+        ${panelBody(panel, { audio, slots, party, wikiSection })}
         <div class="menu-buttons">
           ${panel === 'hub' ? '<button class="btn big" data-act="back">Back</button>' : '<button class="btn big" data-act="hub">Back to Settings</button>'}
         </div>
@@ -35,23 +44,37 @@ export function renderSettings(root, { audio, initialPanel = 'hub', onBack, onSa
         panel = p;
         draw();
       },
-      refreshSave: () => {
-        hasSave = !!load();
+      setWiki: (s) => {
+        wikiSection = s;
         draw();
       },
-      onBack,
+      refreshSave: () => {
+        slots = listSlots();
+        draw();
+      },
+      onBack: () => {
+        stopWikiPreviews?.();
+        stopWikiPreviews = null;
+        onBack();
+      },
       onSaveCleared,
+      onQrLock,
+      party,
     });
+    if (panel === 'wiki') stopWikiPreviews = startPreviews(root);
   };
 
   draw();
 }
 
-function panelBody(panel, { audio, hasSave }) {
+function panelBody(panel, { audio, slots, party, wikiSection }) {
   if (panel === 'hub') {
     return `<div class="menu-buttons settings-nav">
       <button class="btn big" data-panel="audio">Audio</button>
       <button class="btn big" data-panel="display">Display</button>
+      <button class="btn big" data-panel="gameplay">Gameplay</button>
+      <button class="btn big" data-panel="escorts">Escorts</button>
+      <button class="btn big" data-panel="wiki">Wiki</button>
       <button class="btn big" data-panel="save">Save</button>
       <button class="btn big" data-panel="about">About</button>
       <button class="btn big" data-panel="bug">Report a bug</button>
@@ -85,15 +108,64 @@ function panelBody(panel, { audio, hasSave }) {
       </div>
     </div>`;
   }
-  if (panel === 'save') {
+  if (panel === 'gameplay') {
+    const prefs = loadPrefs();
     return `<div class="panel settings-panel">
-      <p class="muted">${hasSave ? 'A local save is on this device.' : 'No save on this device.'}</p>
-      <button class="btn danger" data-act="delete-save" ${hasSave ? '' : 'disabled'}>Delete save</button>
-      <div class="confirm delete-confirm hidden">
-        <p>Delete your current save? This cannot be undone.</p>
-        <button class="btn danger" data-act="delete-confirm">Delete</button>
-        <button class="btn" data-act="delete-cancel">Cancel</button>
+      <div class="settings-row">
+        <span>Pace matching</span>
+        <button class="btn small" data-act="pace">Pace matching: ${prefs.paceMatching ? 'On' : 'Off'}</button>
       </div>
+      <p class="muted small">When on, recent deaths ease combat and fast or clean runs raise it a little. Payouts are never cut. The board records whether this run used it.</p>
+    </div>`;
+  }
+  if (panel === 'escorts') {
+    const snap = party?.snapshot?.() || {};
+    const qr = snap.qrSrc
+      ? `<img class="settings-qr" src="${escapeAttr(snap.qrSrc)}" alt="Join QR">`
+      : '';
+    const code = snap.room ? `<div class="party-code">${escapeHtml(snap.room)}</div>` : '';
+    const crew = snap.crewHtml
+      ? `<ul class="party-crew settings-crew">${snap.crewHtml}</ul>`
+      : '';
+    const locked = loadPrefs().showQr;
+    const note = snap.ready
+      ? 'Scan to join as an escort, or enter the room code on a phone or laptop.'
+      : snap.offline || 'Escorts are offline.';
+    return `<div class="panel settings-panel escorts-panel">
+      <p class="muted small">${escapeHtml(note)}</p>
+      ${qr}
+      ${code}
+      ${crew}
+      <div class="settings-row">
+        <span>Corner QR</span>
+        <button class="btn small" data-act="qr-lock">Corner QR: ${locked ? 'Locked on' : 'Off'}</button>
+      </div>
+      <p class="muted small">When locked, the join QR stays in the corner so others can scan it.</p>
+    </div>`;
+  }
+  if (panel === 'wiki') {
+    return wikiHtml(wikiSection);
+  }
+  if (panel === 'save') {
+    const filled = (slots || []).filter((s) => !s.empty);
+    const fmt = (n) => Math.round(n).toLocaleString();
+    const rows = filled.length
+      ? filled
+          .map(
+            (s) => `<div class="settings-row">
+        <span>${escapeHtml(s.callsign)} · ${fmt(s.credits)} cr</span>
+        <button class="btn small danger" data-act="delete-save" data-slot="${s.index}">Delete</button>
+      </div>
+      <div class="confirm delete-confirm hidden" data-confirm-slot="${s.index}">
+        <p>Delete ${escapeHtml(s.callsign)}? The open Lane Records row will be dropped.</p>
+        <button class="btn danger" data-act="delete-confirm" data-slot="${s.index}">Delete</button>
+        <button class="btn" data-act="delete-cancel">Cancel</button>
+      </div>`,
+          )
+          .join('')
+      : '<p class="muted">No saves on this device. You can keep up to three.</p>';
+    return `<div class="panel settings-panel">
+      ${rows}
     </div>`;
   }
   if (panel === 'about') {
@@ -136,9 +208,14 @@ function panelBody(panel, { audio, hasSave }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared }) {
+function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSaveCleared, onQrLock }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
+    const wiki = e.target.closest('[data-wiki]');
+    if (wiki) {
+      setWiki(wiki.dataset.wiki);
+      return;
+    }
     const nav = e.target.closest('[data-panel]');
     if (nav) {
       setPanel(nav.dataset.panel);
@@ -167,6 +244,24 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       e.target.closest('[data-act="shake"]').textContent = `Shake: ${next ? 'On' : 'Off'}`;
       return;
     }
+    if (act === 'pace') {
+      const next = !loadPrefs().paceMatching;
+      savePrefs({ paceMatching: next });
+      const s = load();
+      if (s) {
+        if (!next) s.paced = false;
+        save(s);
+      }
+      e.target.closest('[data-act="pace"]').textContent = `Pace matching: ${next ? 'On' : 'Off'}`;
+      return;
+    }
+    if (act === 'qr-lock') {
+      const next = !loadPrefs().showQr;
+      savePrefs({ showQr: next });
+      e.target.closest('[data-act="qr-lock"]').textContent = `Corner QR: ${next ? 'Locked on' : 'Off'}`;
+      onQrLock?.(next);
+      return;
+    }
     if (act === 'fullscreen') {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -179,15 +274,19 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       return;
     }
     if (act === 'delete-save') {
-      root.querySelector('.delete-confirm')?.classList.remove('hidden');
+      const slot = e.target.closest('[data-slot]')?.dataset.slot;
+      root.querySelectorAll('.delete-confirm').forEach((el) => el.classList.add('hidden'));
+      root.querySelector(`.delete-confirm[data-confirm-slot="${slot}"]`)?.classList.remove('hidden');
       return;
     }
     if (act === 'delete-cancel') {
-      root.querySelector('.delete-confirm')?.classList.add('hidden');
+      root.querySelectorAll('.delete-confirm').forEach((el) => el.classList.add('hidden'));
       return;
     }
     if (act === 'delete-confirm') {
-      clearSave();
+      const slot = Number(e.target.closest('[data-slot]')?.dataset.slot);
+      await abandonRun(peekSlot(slot));
+      clearSave(slot);
       onSaveCleared?.();
       refreshSave();
     }

@@ -9,7 +9,11 @@ const DEFAULTS = {
   muted: false,
   volume: 1,
   shake: true,
+  paceMatching: true,
+  showQr: false,
   seenVersion: null,
+  terminusWins: 0,
+  laneHeat: 0,
 };
 
 function readRaw() {
@@ -41,11 +45,17 @@ export function loadPrefs() {
   const stored = readRaw() || {};
   const merged = migrateMuted({ ...DEFAULTS, ...stored });
   const volume = Number(merged.volume);
+  const wins = Math.round(Number(merged.terminusWins) || 0);
+  const heat = Math.round(Number(merged.laneHeat) || 0);
   return {
     muted: !!merged.muted,
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
     shake: merged.shake !== false,
+    paceMatching: merged.paceMatching !== false,
+    showQr: !!merged.showQr,
     seenVersion: typeof merged.seenVersion === 'string' ? merged.seenVersion : null,
+    terminusWins: Math.max(0, wins),
+    laneHeat: Math.max(0, Math.min(3, heat)),
   };
 }
 
@@ -54,6 +64,10 @@ export function savePrefs(partial) {
   next.volume = Math.max(0, Math.min(1, Number(next.volume) || 0));
   next.muted = !!next.muted;
   next.shake = next.shake !== false;
+  next.paceMatching = next.paceMatching !== false;
+  next.showQr = !!next.showQr;
+  next.terminusWins = Math.max(0, Math.round(Number(next.terminusWins) || 0));
+  next.laneHeat = Math.max(0, Math.min(3, Math.round(Number(next.laneHeat) || 0)));
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(next));
     localStorage.setItem(MUTE_LEGACY, next.muted ? '1' : '0');
@@ -67,9 +81,14 @@ export function shakeEnabled() {
   return loadPrefs().shake;
 }
 
+export function paceMatchingEnabled() {
+  return loadPrefs().paceMatching;
+}
+
 function hasReturningMarker() {
   try {
     if (localStorage.getItem(SAVE_KEY)) return true;
+    if (localStorage.getItem('txl-trader-saves-v1')) return true;
     if (localStorage.getItem(CALLSIGN_KEY)) return true;
     if (localStorage.getItem(MUTE_LEGACY) !== null) return true;
     if (localStorage.getItem(PREFS_KEY)) return true;

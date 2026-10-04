@@ -1,6 +1,7 @@
 import * as DATA from '../data.js';
-import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES } from '../data.js';
-import { save, shipStats, shipRating, generateContracts } from '../state.js';
+import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES, SHIPS, SHIP_ORDER } from '../data.js';
+import { save, shipStats, shipRating, generateContracts, selectShip } from '../state.js';
+import { unlockAllForCheat, grantShipUnlock } from '../achievements.js';
 import { routeDifficulty } from '../galaxy.js';
 
 // Cheat / test console. Toggle with the backtick key (`).
@@ -241,8 +242,25 @@ function buildCommands(dc) {
         for (const w of ids) {
           if (!WEAPONS[w]) throw new Error(`Unknown weapon "${id}"`);
           if (!s().weapons.includes(w)) s().weapons.push(w);
+          if (!s().weaponLevels) s().weaponLevels = {};
+          if (!s().weaponLevels[w]) s().weaponLevels[w] = 1;
         }
         return `Weapons: ${s().weapons.join(', ')}. Takes effect next flight.`;
+      },
+    },
+    hull: {
+      group: 'Ship & economy', args: '<id|all>', help: `Fit a hull. Ids: ${SHIP_ORDER.join(', ')}.`, needs: 'game', cheat: true,
+      complete: () => [...SHIP_ORDER, 'all'],
+      run: ([id]) => {
+        if (id === 'all') {
+          unlockAllForCheat(s());
+          return `All hulls unlocked. Fitted ${SHIPS[s().ship].name}.`;
+        }
+        if (!SHIPS[id]) throw new Error(`Unknown hull "${id}"`);
+        grantShipUnlock(id);
+        selectShip(s(), id);
+        s().hull = shipStats(s()).maxHull;
+        return `Fitted ${SHIPS[id].name}.`;
       },
     },
     god: {

@@ -4,8 +4,9 @@ import { Particles } from '../fx/particles.js';
 import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx/model.js';
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
-import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
-import { shipStats } from '../state.js';
+import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, weaponLevelMult, weaponRateMult, canMountWeapon, MOUNT_RATE_MULT, MOUNT_DMG_MULT } from '../data.js';
+import { shipStats, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons, recordPace, formatPace, heatMult, heatLevel } from '../state.js';
+import { paceMatchingEnabled } from '../prefs.js';
 import { shakeEnabled } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
@@ -16,9 +17,6 @@ const SPAWN_Y = 58;
 const MAX_PLAY_HALF_W = 70;
 const PLAYER_R = 1.3;
 const ESCORT_R = 1.05;
-const ESCORT_HULL = 28;
-const ESCORT_RATE = 4;
-const ESCORT_DMG = 0.2;
 const ESCORT_RESPAWN = 3;
 const MIN_HOSTILES_PER_WAVE = 6; // asteroids are obstacles and don't count
 const HOMING_SHOT_LIFE = 4; // seconds before a tracking shot burns out
@@ -37,16 +35,17 @@ function basicMat(color) {
 // Plan waves of spawn groups whose total "cost" grows with difficulty and wave index.
 // Types are dealt from a shuffled deck shared across the trip, so every flight
 // sees a mix of all enemy types before any repeats.
-function planWaves(d, count) {
+function planWaves(d, count, pressure = 1) {
   const types = Object.keys(ENEMIES).filter((id) => id !== 'boss');
+  const minHostiles = Math.max(3, Math.round(MIN_HOSTILES_PER_WAVE * pressure));
   let deck = [];
   return Array.from({ length: count }, (_, w) => {
-    const budget = 6 + d * 1.9 + w * 2.5;
+    const budget = (6 + d * 1.9 + w * 2.5) * pressure;
     const groups = [];
     let spent = 0;
     let t = 0.3;
     let hostiles = 0;
-    while (spent < budget || hostiles < MIN_HOSTILES_PER_WAVE) {
+    while (spent < budget || hostiles < minHostiles) {
       if (!deck.length) deck = shuffle([...types]);
       const type = deck.pop();
       // Once the budget is spent we're only topping up hostiles; asteroids don't count.
@@ -65,17 +64,26 @@ function planWaves(d, count) {
 
 export class TravelView {
   constructor(app, { state, from, to, contract, isFinal, hull, onDone }) {
+    this.fromName = from;
     this.toName = to;
     this.app = app;
     this.audio = app.audio;
     this.input = app.input;
     this.onDone = onDone;
+    this.save = state;
     this.d = contract.difficulty;
-    this.hpMult = Math.pow(HP_GROWTH, this.d - 1);
+    const paced = !contract.infinite && state.paced !== false && paceMatchingEnabled();
+    const pace = paced ? pacePressure(state) : 1;
+    const pressure = contract.infinite ? 1 : pace * heatMult(state);
+    this.pressure = pressure;
+    this.paceLabel = formatPace(pace, paced);
+    this.heat = heatLevel(state);
+    if (!contract.infinite) recordPace(state, pace);
+    this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * pressure;
     this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
-    this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
+    this.payMult = Math.pow(PAY_GROWTH, this.d - 1) * (pace > 1 ? 1 + (pace - 1) * 0.5 : 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
-    this.fireRate = 1.1 + 0.06 * (this.d - 1);
+    this.fireRate = (1.1 + 0.06 * (this.d - 1)) * pressure;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07080a);
@@ -86,14 +94,21 @@ export class TravelView {
 
     const stats = shipStats(state);
     this.stats = stats;
+    this.shipId = state.ship || 'hauler';
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
+    this.primaries = primaryWeapons(state);
+    this.mounts = extraMounts(state);
+    this.mountCd = this.mounts.map(() => 0);
+    this.wing = escortStats(state);
+    const startGun = this.primaries.includes(state.weapon) ? state.weapon : (this.primaries[0] || this.owned[0] || 'pulse');
     this.player = {
       x: 0, y: -62,
       hull: Math.min(hull ?? state.hull, stats.maxHull), maxHull: stats.maxHull,
       shield: stats.maxShield, maxShield: stats.maxShield,
       invuln: 0, regenDelay: 0, cooldown: 0,
-      weapon: this.owned.includes(state.weapon) ? state.weapon : 'pulse',
+      weapon: startGun,
     };
+    this.combatMs = 0;
     this.buildPlayerMesh();
     this.helpers = new Map();
     this.nextSid = 1;
@@ -111,17 +126,18 @@ export class TravelView {
     this.paused = false;
     this.done = false;
     this.infinite = !!contract.infinite;
-    this.frameAcc = 0;
     this.demoAcc = 0;
 
     const waveCount = isFinal ? 5 : contract.waves;
     this.hasBoss = contract.forceBoss ?? (isFinal || Math.random() < 0.15 + 0.035 * this.d);
-    this.waves = planWaves(this.d, waveCount);
+    this.waves = planWaves(this.d, waveCount, pressure);
     this.waveIndex = -1;
     this.setPhase('intro');
 
     this.hud = new TravelHUD(app.hud, {
-      from, to, difficulty: this.d, owned: this.owned,
+      from, to, difficulty: this.d, owned: this.owned, mounts: this.mounts,
+      pace: this.paceLabel,
+      heat: this.heat,
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });
@@ -132,7 +148,7 @@ export class TravelView {
   }
 
   buildPlayerMesh() {
-    const ship = createPlayerShip();
+    const ship = createPlayerShip(undefined, { ship: this.shipId });
     const g = ship.group;
     this.flame = ship.flame;
     this.shieldRing = ship.shieldRing;
@@ -172,12 +188,10 @@ export class TravelView {
   update(dt) {
     if (this.done) return;
     if (this.input.hit('Escape', 'KeyP')) this.setPaused(!this.paused);
-    if (this.paused) {
-      this.publishFrame(dt);
-      return;
-    }
+    if (this.paused) return;
 
     this.phaseT += dt;
+    if (['banner', 'wave', 'bossWarn', 'boss', 'infinite'].includes(this.phase)) this.combatMs += dt * 1000;
     this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
     this.updatePhase(dt);
 
@@ -199,73 +213,29 @@ export class TravelView {
       hull: this.player.hull, maxHull: this.player.maxHull,
       shield: this.player.shield, maxShield: this.player.maxShield,
       bounty: this.bounty, weapon: this.player.weapon, auto: this.auto,
+      mounts: this.mounts,
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
     });
-    this.publishFrame(dt);
+    this.app.party?.setBrief(this.combatBrief());
   }
 
-  publishFrame(dt) {
-    const party = this.app.party;
-    if (!party?.hasEscorts()) return;
-    this.frameAcc += dt;
-    if (this.frameAcc < 0.1) return;
-    this.frameAcc = 0;
-    party.setFrame(this.combatFrame());
-  }
-
-  combatFrame() {
-    const packShot = (s, k) => ({
-      i: s.sid,
-      k,
-      x: +s.x.toFixed(2),
-      y: +s.y.toFixed(2),
-      vx: +s.vx.toFixed(2),
-      vy: +s.vy.toFixed(2),
-      c: s.color,
-      r: s.r,
-      h: s.homing ? 1 : 0,
-    });
-    const escorts = [...this.helpers.values()].map((h) => ({
-      i: h.id,
-      c: ESCORT_COLORS.indexOf(h.color) >= 0 ? ESCORT_COLORS.indexOf(h.color) : 0,
-      x: +h.x.toFixed(2),
-      y: +h.y.toFixed(2),
-      h: Math.max(0, h.hull),
-      m: h.maxHull,
-      r: Math.max(0, h.respawn),
-    }));
-    const enemies = this.enemies.filter((e) => !e.dead).map((e) => ({
-      i: e.sid,
-      t: e.type,
-      x: +e.x.toFixed(2),
-      y: +e.y.toFixed(2),
-      sc: +(e.mesh?.scale?.x || 1).toFixed(2),
-      hp: Math.max(0, e.hp),
-    }));
-    const shots = [
-      ...this.pShots.filter((s) => !s.dead).map((s) => packShot(s, 0)),
-      ...this.eShots.filter((s) => !s.dead).map((s) => packShot(s, 1)),
-    ];
-    if (shots.length > 80) shots.splice(0, shots.length - 80);
+  combatBrief() {
     const p = this.player;
-    const beam = this.beamMesh?.visible
-      ? { x: +this.beamMesh.position.x.toFixed(2), y: +this.beamMesh.position.y.toFixed(2), h: +this.beamMesh.scale.y.toFixed(2) }
-      : null;
-    const frame = {
-      p: this.phase,
-      z: this.paused ? 1 : 0,
-      w: +(this.halfW || 50).toFixed(2),
-      s: this.stats.speed,
+    return {
       wt: this.waveText(),
-      cap: { x: +p.x.toFixed(2), y: +p.y.toFixed(2), h: p.hull, m: p.maxHull, sh: p.shield, sm: p.maxShield },
-      es: escorts,
-      en: enemies,
-      sh: shots,
-      b: beam,
+      from: this.fromName || '',
+      to: this.toName || '',
+      wpn: p.weapon || 'pulse',
+      capH: Math.max(0, p.hull),
+      capM: p.maxHull,
+      sh: Math.max(0, p.shield),
+      sm: p.maxShield,
+      by: this.bounty,
+      k: this.kills,
+      es: this.helpers.size,
+      en: this.enemies.filter((e) => this.isHostile(e) && !e.dead).length,
     };
-    while (JSON.stringify(frame).length > 24000 && frame.sh.length) frame.sh.pop();
-    return frame;
   }
 
   waveText() {
@@ -344,8 +314,13 @@ export class TravelView {
     this.fireRate = 1.1;
     const stats = shipStats(state);
     this.stats = stats;
+    this.save = state;
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
-    if (!this.owned.includes(this.player.weapon)) this.player.weapon = this.owned[0] || 'pulse';
+    this.primaries = primaryWeapons(state);
+    this.mounts = extraMounts(state);
+    this.mountCd = this.mounts.map(() => 0);
+    this.wing = escortStats(state);
+    if (!this.primaries.includes(this.player.weapon)) this.player.weapon = this.primaries[0] || this.owned[0] || 'pulse';
     this.player.maxHull = stats.maxHull;
     this.player.hull = stats.maxHull;
     this.player.maxShield = stats.maxShield;
@@ -450,12 +425,13 @@ export class TravelView {
       p.y = clamp(p.y + (my / len) * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
 
       WEAPON_ORDER.forEach((w, i) => {
-        if (inp.hit(`Digit${i + 1}`) && this.owned.includes(w)) p.weapon = w;
+        if (inp.hit(`Digit${i + 1}`) && this.primaries.includes(w)) p.weapon = w;
       });
       if (inp.hit('KeyQ', 'KeyE')) {
-        const i = this.owned.indexOf(p.weapon);
+        const list = this.primaries.length ? this.primaries : this.owned;
+        const i = Math.max(0, list.indexOf(p.weapon));
         const dir = inp.hit('KeyE') ? 1 : -1;
-        p.weapon = this.owned[(i + dir + this.owned.length) % this.owned.length];
+        p.weapon = list[(i + dir + list.length) % list.length];
       }
       if (inp.hit('KeyF')) this.auto = !this.auto;
     }
@@ -476,38 +452,93 @@ export class TravelView {
     this.shieldRing.visible = p.shield > 0.5;
     this.shieldRing.material.opacity = 0.15 + 0.35 * (p.shield / (p.maxShield || 1)) + (p.shieldFlash > 0 ? 0.5 : 0);
     p.shieldFlash = (p.shieldFlash || 0) - dt;
-    if (Math.random() < 0.6) this.particles.emit(p.x, p.y - 3.4, 1, 0xff8833, { speed: 12, angle: -Math.PI / 2, spread: 0.6, life: 0.3 });
+    const flameY = this.flame.position.y;
+    if (Math.random() < 0.6) this.particles.emit(p.x, p.y + flameY - 0.6, 1, 0xff8833, { speed: 12, angle: -Math.PI / 2, spread: 0.6, life: 0.3 });
   }
 
   fire(dt, firing) {
     const p = this.player;
-    const beamOn = firing && p.weapon === 'beam';
+    const w = WEAPONS[p.weapon] || WEAPONS.pulse;
+    const beamOn = firing && w.kind === 'beam';
     this.beamMesh.visible = beamOn;
     this.audio.beam(beamOn);
-    if (beamOn) return this.fireBeam(dt);
-    if (!firing || p.cooldown > 0) return;
-    const w = WEAPONS[p.weapon];
-    const dmg = w.dmg * this.stats.dmgMult;
-    p.cooldown = 1 / w.rate;
-    switch (p.weapon) {
-      case 'pulse':
-        this.addShot({ kind: 'bolt', x: p.x, y: p.y + 3, vx: 0, vy: 115, dmg, r: 0.9, color: w.color });
-        break;
-      case 'scatter':
-        for (let i = 0; i < w.pellets; i++) {
-          const a = Math.PI / 2 + (i - (w.pellets - 1) / 2) * 0.17;
-          this.addShot({ kind: 'pellet', x: p.x, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, color: w.color });
+    if (beamOn) this.fireBeam(dt);
+    else if (firing && p.cooldown <= 0) {
+      const lvl = weaponLevel(this.save, p.weapon);
+      const dmg = (w.dmg || 0) * this.stats.dmgMult * weaponLevelMult(lvl);
+      const rate = (w.rate || 1) * (this.stats.fireRate || 1) * weaponRateMult(lvl);
+      p.cooldown = 1 / rate;
+      this.spawnWeaponShots(w, dmg);
+      this.audio.play(w.sfx || p.weapon);
+    }
+    this.fireMounts(dt);
+  }
+
+  fireMounts(dt) {
+    const combat = this.phase !== 'intro' && this.phase !== 'dead' && this.phase !== 'outro';
+    if (!combat) return;
+    const state = this.save;
+    for (let i = 0; i < this.mounts.length; i++) {
+      const id = this.mounts[i];
+      const w = WEAPONS[id];
+      if (!w || !canMountWeapon(id)) continue;
+      this.mountCd[i] = (this.mountCd[i] || 0) - dt;
+      if (this.mountCd[i] > 0) continue;
+      const lvl = weaponLevel(state || { weaponLevels: { [id]: 1 } }, id);
+      const dmg = (w.dmg || 0) * this.stats.dmgMult * weaponLevelMult(lvl) * MOUNT_DMG_MULT;
+      const rate = (w.rate || 1) * (this.stats.fireRate || 1) * weaponRateMult(lvl) * MOUNT_RATE_MULT;
+      this.mountCd[i] = 1 / Math.max(0.2, rate);
+      this.spawnWeaponShots(w, dmg, i);
+    }
+  }
+
+  spawnWeaponShots(w, dmg, mount = -1) {
+    const p = this.player;
+    const ox = mount < 0 ? 0 : (mount % 2 ? 1 : -1) * (1.6 + mount * 0.4);
+    const id = WEAPON_ORDER.find((k) => WEAPONS[k] === w);
+    const splitMul = this.stats.dmgMult * weaponLevelMult(weaponLevel(this.save, id || 'pulse'));
+    switch (w.kind) {
+      case 'spread': {
+        const n = w.pellets || 5;
+        for (let i = 0; i < n; i++) {
+          const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.17;
+          this.addShot({ kind: 'pellet', x: p.x + ox, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, color: w.color });
         }
         break;
-      case 'seeker':
-        for (const s of [-1, 1]) this.addShot({ kind: 'missile', x: p.x + s * 2.5, y: p.y, vx: s * 25, vy: 25, dmg, r: 1, life: 3.5, color: w.color });
+      }
+      case 'homing': {
+        const n = w.count || 2;
+        for (let i = 0; i < n; i++) {
+          const s = n === 1 ? 0 : (i - (n - 1) / 2);
+          this.addShot({ kind: 'missile', x: p.x + ox + s * 1.6, y: p.y, vx: s * 18, vy: 28, dmg, r: n > 2 ? 0.7 : 1, life: 2.4, color: w.color });
+        }
         break;
+      }
+      case 'burst':
+        this.addShot({
+          kind: 'bolt', x: p.x + ox, y: p.y + 3, vx: 0, vy: 90, dmg, r: 1.1, color: w.color, life: 0.42,
+          split: w.split || 6, splitDmg: (w.splitDmg || 5) * splitMul,
+        });
+        break;
+      case 'pierce':
+        this.addShot({ kind: 'bolt', x: p.x + ox, y: p.y + 3.2, vx: 0, vy: 85, dmg, r: 1.0, color: w.color, pierce: w.pierce || 3, hit: new Set() });
+        break;
+      case 'ring': {
+        const n = w.pellets || 12;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          this.addShot({ kind: 'pellet', x: p.x + ox, y: p.y, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, dmg, r: 0.8, life: 0.55, color: w.color });
+        }
+        break;
+      }
+      default:
+        this.addShot({ kind: 'bolt', x: p.x + ox, y: p.y + 3, vx: 0, vy: 115, dmg, r: 0.9, color: w.color });
     }
-    this.audio.play(p.weapon);
   }
 
   fireBeam(dt) {
     const p = this.player;
+    const w = WEAPONS[p.weapon] || WEAPONS.beam;
     let target = null;
     for (const e of this.enemies) {
       if (e.dead || e.y < p.y || e.y > TOP + 2) continue;
@@ -521,8 +552,8 @@ export class TravelView {
     this.beamMesh.position.set(p.x, (y0 + endY) / 2, 0.2);
     this.beamMesh.scale.set(1 + Math.random() * 0.3, Math.max(0.1, endY - y0), 1);
     if (target) {
-      this.damageEnemy(target, WEAPONS.beam.dps * this.stats.dmgMult * dt, true);
-      if (Math.random() < 0.5) this.particles.emit(p.x, endY, 2, WEAPONS.beam.color, { speed: 25, angle: -Math.PI / 2, spread: 2, life: 0.3 });
+      this.damageEnemy(target, (w.dps || 100) * this.stats.dmgMult * (this.stats.fireRate || 1) * weaponLevelMult(weaponLevel(this.save, 'beam')) * dt, true);
+      if (Math.random() < 0.5) this.particles.emit(p.x, endY, 2, w.color, { speed: 25, angle: -Math.PI / 2, spread: 2, life: 0.3 });
     }
   }
 
@@ -536,6 +567,7 @@ export class TravelView {
     s.mesh = mesh;
     s.age = 0;
     s.sid = this.nextSid++;
+    if (s.pierce && !s.hit) s.hit = new Set();
     this.pShots.push(s);
   }
 
@@ -584,8 +616,8 @@ export class TravelView {
       color,
       x: this.player.x + (this.helpers.size % 2 ? 7 : -7),
       y: this.player.y - 5,
-      hull: ESCORT_HULL,
-      maxHull: ESCORT_HULL,
+      hull: this.wing.maxHull,
+      maxHull: this.wing.maxHull,
       cooldown: 0,
       invuln: 1,
       respawn: 0,
@@ -643,14 +675,14 @@ export class TravelView {
       const mx = h.mx;
       my = h.my;
       const len = Math.hypot(mx, my) || 1;
-      h.x = clamp(h.x + (mx / len) * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
-      h.y = clamp(h.y + (my / len) * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
+      h.x = clamp(h.x + (mx / len) * this.stats.speed * this.wing.speedMult * dt, -this.playHalfW, this.playHalfW);
+      h.y = clamp(h.y + (my / len) * this.stats.speed * this.wing.speedMult * dt, BOTTOM + 5, TOP - 12);
     }
     h.cooldown -= dt;
     const firing = controllable && this.phase !== 'intro' && h.fire;
     if (firing && h.cooldown <= 0) {
-      h.cooldown = 1 / ESCORT_RATE;
-      const dmg = WEAPONS.pulse.dmg * this.stats.dmgMult * ESCORT_DMG;
+      h.cooldown = 1 / this.wing.rate;
+      const dmg = WEAPONS.pulse.dmg * this.stats.dmgMult * this.wing.dmgFrac;
       this.addShot({ kind: 'bolt', x: h.x, y: h.y + 2.2, vx: 0, vy: 115, dmg, r: 0.7, color: WEAPONS.pulse.color });
     }
     h.mesh.position.set(h.x, h.y, 0);
@@ -939,12 +971,12 @@ export class TravelView {
       if (s.kind === 'missile') {
         if (!s.target || s.target.dead) s.target = this.nearestEnemy(s.x, s.y);
         let a = Math.atan2(s.vy, s.vx);
-        const speed = Math.min(90, Math.hypot(s.vx, s.vy) + 110 * dt);
+        const speed = Math.min(72, Math.hypot(s.vx, s.vy) + 85 * dt);
         if (s.target && s.age > 0.15) {
           const want = Math.atan2(s.target.y - s.y, s.target.x - s.x);
           let diff = want - a;
           diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-          a += clamp(diff, -6 * dt, 6 * dt);
+          a += clamp(diff, -3.4 * dt, 3.4 * dt);
         } else if (s.age > 0.15) {
           a += clamp(Math.PI / 2 - a, -3 * dt, 3 * dt);
         }
@@ -956,7 +988,10 @@ export class TravelView {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
-      if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) s.dead = true;
+      if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) {
+        if (s.split && !s.dead) this.burstShot(s);
+        s.dead = true;
+      }
     }
     const p = this.player;
     for (const s of this.eShots) {
@@ -996,6 +1031,17 @@ export class TravelView {
     }
   }
 
+  burstShot(s) {
+    if (s.burstDone) return;
+    s.burstDone = true;
+    const n = s.split || 6;
+    const dmg = s.splitDmg || s.dmg * 0.5;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.2;
+      this.addShot({ kind: 'pellet', x: s.x, y: s.y, vx: Math.cos(a) * 72, vy: Math.sin(a) * 72, dmg, r: 0.7, life: 0.35, color: s.color, arm: 0.04 });
+    }
+  }
+
   nearestEnemy(x, y) {
     let best = null;
     let bd = Infinity;
@@ -1013,15 +1059,23 @@ export class TravelView {
   collide() {
     const p = this.player;
     for (const s of this.pShots) {
-      if (s.dead) continue;
+      if (s.dead || (s.arm && s.age < s.arm)) continue;
       for (const e of this.enemies) {
         if (e.dead || e.y > TOP + 2) continue;
+        if (s.hit?.has(e)) continue;
         const rr = e.r + s.r;
         if ((e.x - s.x) ** 2 + (e.y - s.y) ** 2 < rr * rr) {
-          s.dead = true;
           this.damageEnemy(e, s.dmg);
           this.particles.emit(s.x, s.y, 3, s.color, { speed: 15, life: 0.25 });
-          break;
+          if (s.pierce) {
+            s.hit.add(e);
+            s.pierce--;
+            if (s.pierce <= 0) s.dead = true;
+          } else {
+            if (s.split) this.burstShot(s);
+            s.dead = true;
+            break;
+          }
         }
       }
       if (s.dead) continue;
@@ -1030,9 +1084,15 @@ export class TravelView {
         if (h.dead || !h.homing) continue;
         const rr = h.r + s.r;
         if ((h.x - s.x) ** 2 + (h.y - s.y) ** 2 < rr * rr) {
-          s.dead = true;
+          if (s.pierce) {
+            s.pierce--;
+            if (s.pierce <= 0) s.dead = true;
+          } else {
+            if (s.split) this.burstShot(s);
+            s.dead = true;
+          }
           this.shootDown(h);
-          break;
+          if (s.dead) break;
         }
       }
     }
@@ -1149,7 +1209,16 @@ export class TravelView {
     this.done = true;
     this.audio.beam(false);
     this.app.party?.setMode('wait');
-    this.onDone({ ...result, hull: this.player.hull, bounty: this.bounty, kills: this.kills, bossKilled: this.bossKilled, weapon: this.player.weapon });
+    this.onDone({
+      ...result,
+      hull: this.player.hull,
+      bounty: this.bounty,
+      kills: this.kills,
+      bossKilled: this.bossKilled,
+      weapon: this.player.weapon,
+      combatMs: this.combatMs,
+      waves: this.waves?.length || 1,
+    });
   }
 
   dispose() {

@@ -1,12 +1,19 @@
-import { fetchBoard, formatRunTime } from '../score.js';
+import { fetchBoard, formatRunTime, BOARD_SEASON_LABEL } from '../score.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
+
+function formatBoardPace(row) {
+  if (row.paced === false) return 'Off';
+  const n = Number(row.pace);
+  const p = Number.isFinite(n) ? n / 100 : 1;
+  return `×${p.toFixed(2)}`;
+}
 
 export function renderLeaderboard(root, { onBack }) {
   root.innerHTML = `
     <div class="menu">
       <h1 class="logo">LANE<span>RECORDS</span></h1>
-      <p class="tagline">Open runs stay on the board until they arrive at the Terminus. Ranked by score and by time.</p>
+      <p class="tagline">${BOARD_SEASON_LABEL}. Open runs stay on the board until they arrive at the Terminus. Ranked by score and by time.</p>
       <div class="panel board-panel">
         <div class="board-tabs">
           <button class="tab active" data-sort="score">Score</button>
@@ -37,13 +44,15 @@ export function renderLeaderboard(root, { onBack }) {
         return;
       }
       body.innerHTML = `<table class="board">
-        <thead><tr><th>#</th><th>Callsign</th><th>Score</th><th>Time</th></tr></thead>
+        <thead><tr><th>#</th><th>Callsign</th><th>Score</th><th>Cash</th><th>Pace</th><th>Time</th></tr></thead>
         <tbody>${rows
           .map(
             (r, i) => `<tr>
               <td>${r.rank ?? i + 1}</td>
-              <td>${escapeHtml(r.callsign)} <span class="${r.status === 'live' ? 'board-live' : 'board-done'}">${r.status === 'live' ? 'In flight' : 'Arrived'}</span></td>
+              <td>${escapeHtml(r.callsign)} <span class="${r.status === 'live' ? 'board-live' : 'board-done'}">${r.status === 'live' ? 'In flight' : 'Arrived'}</span>${r.paced === false ? ' <span class="board-pace">Unpaced</span>' : ''}</td>
               <td>${fmt(r.score)}</td>
+              <td>${fmt(r.credits || 0)}</td>
+              <td>${formatBoardPace(r)}</td>
               <td>${formatRunTime(r.time_ms)}</td>
             </tr>`,
           )

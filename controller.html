@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>TXL Escort</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,7 +14,6 @@
     />
   </head>
   <body class="controller-page">
-    <div id="arena" class="hidden"></div>
     <div id="pad">
       <header>
         <div class="eyebrow">TXL Trader</div>
@@ -39,6 +40,44 @@
         </label>
         <button class="btn primary" type="submit">Join</button>
       </form>
+      <div id="bridge" class="hidden">
+        <div class="bridge-ship">
+          <div class="ship-glow"></div>
+          <svg class="ship-art" viewBox="-4.2 -4.4 8.4 9.2" aria-hidden="true">
+            <polygon class="ship-hull" points="0,4 1,1.6 1.4,-0.4 3.2,-2.4 3.2,-3.2 1,-2.2 0.6,-3 -0.6,-3 -1,-2.2 -3.2,-3.2 -3.2,-2.4 -1.4,-0.4 -1,1.6" />
+            <polygon class="ship-glass" points="0,2.7 0.55,1.3 0.5,0.1 -0.5,0.1 -0.55,1.3" />
+            <polygon class="ship-flame" points="0.45,-3.1 0,-4.35 -0.45,-3.1" />
+          </svg>
+          <p class="ship-name">Escort</p>
+        </div>
+        <div class="bridge-stats">
+          <p class="wave-line">Standing by</p>
+          <p class="route-line muted"></p>
+          <div class="meter cap-hull-meter">
+            <label>CAPTAIN</label>
+            <div class="bar hull"><span></span></div>
+            <b></b>
+          </div>
+          <div class="meter cap-shield-meter">
+            <label>SHIELD</label>
+            <div class="bar shield"><span></span></div>
+            <b></b>
+          </div>
+          <div class="meter you-hull-meter">
+            <label>ESCORT</label>
+            <div class="bar hull"><span></span></div>
+            <b></b>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-tile"><label>Wave</label><b class="wave-v">—</b></div>
+            <div class="stat-tile"><label>Hostiles</label><b class="en-v">—</b></div>
+            <div class="stat-tile"><label>Bounty</label><b class="by-v">—</b></div>
+            <div class="stat-tile"><label>Kills</label><b class="k-v">—</b></div>
+            <div class="stat-tile"><label>Crew</label><b class="es-v">—</b></div>
+            <div class="stat-tile"><label>Weapon</label><b class="wpn-v">—</b></div>
+          </div>
+        </div>
+      </div>
       <div class="controls hidden">
         <div class="stick" id="stick"><div class="knob"></div></div>
         <button type="button" class="fire" id="fire">FIRE</button>

@@ -18,7 +18,11 @@ export class DockHUD {
           ${mode === 'dock' ? '<div class="muted">No bumps = precision bonus</div>' : ''}
         </div>
         <div class="dock-hint"></div>
-        <div class="hud-bl with-party">WASD / Arrows thrust · Esc pause · Bumping traffic or the station damages your hull</div>
+        <div class="hud-bl with-party">${
+          mode === 'undock'
+            ? 'Ship faces up · WASD / Arrows thrust that way · gate at the top · Esc pause · Bumping traffic or the station damages your hull'
+            : 'WASD / Arrows thrust · Esc pause · Bumping traffic or the station damages your hull'
+        }</div>
         <div class="banner"></div>
         <div class="pause-overlay hidden">
           <div class="panel">
