@@ -1,6 +1,6 @@
 # TXL Trader
 
-A top-down neon space trading shooter built with Three.js. See [game.md](game.md) for the design.
+A top-down, low-poly space trading shooter built with Three.js. See [game.md](game.md) for the design index and [`design/`](design/) for the pages.
 
 ```bash
 npm install

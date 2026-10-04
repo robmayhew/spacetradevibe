@@ -71,22 +71,25 @@ export const WEAPONS = {
   },
   scatter: {
     name: 'Scatter Cannon',
-    desc: 'Short-range five-pellet spread. Great against swarms.',
+    desc: 'Short-range five-pellet spread. Pellets lose power the farther they fly.',
     cost: 450,
     color: 0xffcc33,
     rate: 2.6,
-    dmg: 6,
+    dmg: 2.3, // per pellet: 5 × 2.3 × 2.6/s ≈ 30 dps point-blank
     pellets: 5,
-    stat: '78 dps · wide, short range',
+    falloff: 0.75, // share of damage lost by maximum range (linear with distance)
+    stat: '30 dps point-blank · weakens with range',
   },
   seeker: {
     name: 'Seeker Missiles',
-    desc: 'Twin homing missiles that hunt the nearest target.',
+    desc: 'Twin homing missiles that hunt the nearest target. 3 salvos, then a 5 s recharge.',
     cost: 1600,
     color: 0xff44ff,
     rate: 1.7,
     dmg: 24,
-    stat: '82 dps · homing',
+    ammo: 3, // salvos before recharging
+    reload: 5, // seconds to recharge all salvos
+    stat: '82 dps burst · 3 salvos, 5 s recharge',
   },
   beam: {
     name: 'Ion Beam',

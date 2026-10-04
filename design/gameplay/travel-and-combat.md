@@ -2,6 +2,7 @@
 
 # Travel & Combat
 
+- Travel between stations happens **at warp**, the only place the KL9 can attack you. Warp streaks rush past and the HUD reads "AT WARP" until the first wave.
 - The ship is seen top-down with the stars scrolling past. It moves forward, back, left and right but **never turns**.
 - Combat is arcade style against waves of enemies. Weapon damage removes enemy HP until the enemy is destroyed.
 - Each trip is **1-4 waves**. More difficult routes tend to have more waves.

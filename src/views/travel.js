@@ -7,6 +7,7 @@ import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from 
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
 import { shipStats } from '../state.js';
 import { TravelHUD } from '../ui/hud.js';
+import { WarpStreaks } from '../fx/warp.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
 
 const TOP = 50;
@@ -27,6 +28,9 @@ const circleGeo = new THREE.CircleGeometry(0.7, 10);
 const pelletGeo = new THREE.CircleGeometry(0.45, 8);
 const boltGeo = new THREE.PlaneGeometry(0.45, 2.6);
 const beamGeo = new THREE.PlaneGeometry(1, 1);
+const eyeGeo = new THREE.CircleGeometry(0.35, 12);
+// Over-bright red so bloom picks it up as a glow.
+const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.3, 0.18) });
 const matCache = new Map();
 function basicMat(color) {
   if (!matCache.has(color)) matCache.set(color, new THREE.MeshBasicMaterial({ color }));
@@ -36,6 +40,11 @@ function basicMat(color) {
 // Plan waves of spawn groups whose total "cost" grows with difficulty and wave index.
 // Types are dealt from a shuffled deck shared across the trip, so every flight
 // sees a mix of all enemy types before any repeats.
+// Pellets lose power linearly with distance; they fly at constant speed, so age/life tracks it.
+function shotDamage(s) {
+  return s.falloff ? s.dmg * (1 - s.falloff * Math.min(1, s.age / s.life)) : s.dmg;
+}
+
 function planWaves(d, count) {
   const types = Object.keys(ENEMIES).filter((id) => id !== 'boss');
   let deck = [];
@@ -81,6 +90,7 @@ export class TravelView {
     addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-50, 50, TOP, BOTTOM, -10, 10);
     this.stars = new Starfield(this.scene, app.pixelRatio);
+    this.warp = new WarpStreaks(this.scene);
     this.particles = new Particles(this.scene, app.pixelRatio);
 
     const stats = shipStats(state);
@@ -92,8 +102,10 @@ export class TravelView {
       shield: stats.maxShield, maxShield: stats.maxShield,
       invuln: 0, regenDelay: 0, cooldown: 0,
       weapon: this.owned.includes(state.weapon) ? state.weapon : 'pulse',
+      seekerAmmo: WEAPONS.seeker.ammo,
+      seekerReload: 0,
     };
-    this.buildPlayerMesh();
+    this.buildPlayerMesh({ upgrades: state.upgrades, weapons: this.owned });
     this.helpers = new Map();
     this.nextSid = 1;
     this.app.party?.setMode('travel');
@@ -124,14 +136,15 @@ export class TravelView {
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });
-    this.hud.banner(`Departing ${from}`, `${contract.good} bound for ${to}`);
+    this.hud.banner('Entering warp', `${contract.good} bound for ${to}`);
     this.audio.play('launch');
     this.input.captureKeys = true;
     document.activeElement?.blur?.();
   }
 
-  buildPlayerMesh() {
-    const ship = createPlayerShip();
+  buildPlayerMesh(loadout) {
+    const ship = createPlayerShip(PLAYER_COLOR, { loadout });
+    this.ship = ship;
     const g = ship.group;
     this.flame = ship.flame;
     this.shieldRing = ship.shieldRing;
@@ -178,6 +191,7 @@ export class TravelView {
 
     this.phaseT += dt;
     this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
+    this.warp.update(dt, this.phase === 'outro' ? 1 + this.phaseT * 1.5 : 1);
     this.updatePhase(dt);
 
     const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro', 'infinite'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
@@ -197,6 +211,7 @@ export class TravelView {
       hull: this.player.hull, maxHull: this.player.maxHull,
       shield: this.player.shield, maxShield: this.player.maxShield,
       bounty: this.bounty, weapon: this.player.weapon, auto: this.auto,
+      seeker: { ammo: this.player.seekerAmmo, max: WEAPONS.seeker.ammo, reload: this.player.seekerReload },
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
     });
@@ -273,10 +288,10 @@ export class TravelView {
     }
     if (this.phase === 'boss' || this.phase === 'bossWarn') {
       const escorts = this.enemies.filter((e) => this.isHostile(e) && e.type !== 'boss').length;
-      return `CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
+      return `KL9 CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
     }
     if (this.phase === 'outro') return 'DOCKING';
-    if (this.waveIndex < 0) return 'EN ROUTE';
+    if (this.waveIndex < 0) return 'AT WARP';
     const left = this.phase === 'wave' ? ` · ${this.hostilesLeft()} LEFT` : '';
     return `WAVE ${this.waveIndex + 1} / ${this.waves.length}${this.hasBoss ? ' + BOSS' : ''}${left}`;
   }
@@ -393,11 +408,11 @@ export class TravelView {
     if (this.waveIndex < this.waves.length) {
       this.buildSpawnQueue(this.waves[this.waveIndex]);
       this.setPhase('banner');
-      this.hud.banner(`Wave ${this.waveIndex + 1}`, this.waveIndex === this.waves.length - 1 && !this.hasBoss ? 'Final wave' : '');
+      this.hud.banner(`Wave ${this.waveIndex + 1}`, this.waveIndex === 0 ? 'KL9 ambush at warp' : this.waveIndex === this.waves.length - 1 && !this.hasBoss ? 'Final wave' : '');
       this.audio.play('wave');
     } else if (this.hasBoss && !this.bossKilled && this.phase !== 'boss') {
       this.setPhase('bossWarn');
-      this.hud.banner('WARNING', 'Hostile capital ship inbound', 'danger');
+      this.hud.banner('WARNING', 'KL9 capital ship inbound', 'danger');
       this.audio.play('bossWarn');
     } else {
       this.startOutro();
@@ -459,6 +474,14 @@ export class TravelView {
     }
 
     p.cooldown -= dt;
+    if (p.seekerReload > 0) {
+      p.seekerReload -= dt;
+      if (p.seekerReload <= 0) {
+        p.seekerAmmo = WEAPONS.seeker.ammo;
+        this.ship.setSeekerAmmo(p.seekerAmmo);
+        if (p.weapon === 'seeker') this.audio.play('beep');
+      }
+    }
     const firing = controllable && this.phase !== 'intro' && (this.auto || inp.down('Space', 'KeyJ'));
     this.fire(dt, firing);
 
@@ -471,6 +494,8 @@ export class TravelView {
     m.position.set(p.x, p.y, 0);
     m.visible = p.invuln <= 0 || Math.floor(p.invuln * 20) % 2 === 0;
     this.flame.scale.set(1, 0.7 + Math.random() * 0.5 + my * 0.4, 1);
+    this.ship.setDamage(1 - p.hull / p.maxHull);
+    this.ship.update(dt, this.particles, p.x, p.y);
     this.shieldRing.visible = p.shield > 0.5;
     this.shieldRing.material.opacity = 0.15 + 0.35 * (p.shield / (p.maxShield || 1)) + (p.shieldFlash > 0 ? 0.5 : 0);
     p.shieldFlash = (p.shieldFlash || 0) - dt;
@@ -485,6 +510,7 @@ export class TravelView {
     if (beamOn) return this.fireBeam(dt);
     if (!firing || p.cooldown > 0) return;
     const w = WEAPONS[p.weapon];
+    if (p.weapon === 'seeker' && p.seekerAmmo <= 0) return; // recharging
     const dmg = w.dmg * this.stats.dmgMult;
     p.cooldown = 1 / w.rate;
     switch (p.weapon) {
@@ -494,11 +520,14 @@ export class TravelView {
       case 'scatter':
         for (let i = 0; i < w.pellets; i++) {
           const a = Math.PI / 2 + (i - (w.pellets - 1) / 2) * 0.17;
-          this.addShot({ kind: 'pellet', x: p.x, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, color: w.color });
+          this.addShot({ kind: 'pellet', x: p.x, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, falloff: w.falloff, color: w.color });
         }
         break;
       case 'seeker':
         for (const s of [-1, 1]) this.addShot({ kind: 'missile', x: p.x + s * 2.5, y: p.y, vx: s * 25, vy: 25, dmg, r: 1, life: 3.5, color: w.color });
+        p.seekerAmmo--;
+        if (p.seekerAmmo <= 0) p.seekerReload = w.reload;
+        this.ship.setSeekerAmmo(p.seekerAmmo);
         break;
     }
     this.audio.play(p.weapon);
@@ -685,6 +714,11 @@ export class TravelView {
       mesh.scale.setScalar(size);
     } else {
       mesh = solid(type, SHAPES[type], def.color, { glass: GLASS[type] });
+      // KL9 robots: a glowing red sensor eye toward the front (enemy shapes point down).
+      const eye = new THREE.Mesh(eyeGeo, eyeMat);
+      eye.position.set(0, -def.r * 0.3, 0.6);
+      eye.scale.setScalar(Math.max(1.1, def.r * 0.6));
+      mesh.add(eye);
     }
     mesh.position.set(x, y, 0);
     this.scene.add(mesh);
@@ -908,7 +942,7 @@ export class TravelView {
       this.clearEnemyShots();
       this.shake = 4;
       this.audio.play('bigExplode');
-      this.hud.banner('Capital ship destroyed', `+${Math.round(e.def.bounty * this.payMult)} cr bounty`);
+      this.hud.banner('KL9 capital ship destroyed', `+${Math.round(e.def.bounty * this.payMult)} cr bounty`);
     } else {
       this.particles.explode(e.x, e.y, e.def.color, e.r / 1.8);
       this.shake = Math.max(this.shake, e.r * 0.25);
@@ -954,6 +988,7 @@ export class TravelView {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
+      if (s.falloff) s.mesh.scale.setScalar(1 - 0.55 * Math.min(1, s.age / s.life)); // pellets visibly weaken
       if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) s.dead = true;
     }
     const p = this.player;
@@ -1017,7 +1052,7 @@ export class TravelView {
         const rr = e.r + s.r;
         if ((e.x - s.x) ** 2 + (e.y - s.y) ** 2 < rr * rr) {
           s.dead = true;
-          this.damageEnemy(e, s.dmg);
+          this.damageEnemy(e, shotDamage(s));
           this.particles.emit(s.x, s.y, 3, s.color, { speed: 15, life: 0.25 });
           break;
         }
@@ -1127,7 +1162,7 @@ export class TravelView {
     this.clearEnemyShots();
     this.beamMesh.visible = false;
     this.audio.beam(false);
-    this.hud.banner('Route clear', `Approaching ${this.toName}`);
+    this.hud.banner('Lane clear', `Dropping out of warp at ${this.toName}`);
     this.outroV = 0;
   }
 
@@ -1157,6 +1192,7 @@ export class TravelView {
     this.audio.beam(false);
     this.hud.destroy();
     this.stars.dispose();
+    this.warp.dispose();
     this.particles.dispose();
     this.scene.traverse((o) => {
       disposeModel(o);

@@ -1,6 +1,16 @@
 # TXL TRADER
 
-A 2D video game where the player controls a spaceship seen from a top-down view. The goal is to move goods from station to station, fighting enemies and obstacles on each trip. Reaching the **Terminus** at the far edge of the map wins the game.
+A 2D video game where the player controls a spaceship seen from a top-down view. The goal is to move goods from station to station, fighting the KL9 robot army and obstacles on each trip. Reaching the **Terminus** at the far edge of the map wins the game.
+
+## Story
+
+You are the chosen one of your people, from the planet **Mulerebs**, long oppressed by the **KL9** robot army. You have been given a ship with only minimal weapons. You must reach the **Terminus**, the heart of the robot army, and deliver the shutdown virus code to its core.
+
+The KL9 can only attack you at warp. Trade between stations and gather technologies until you are strong enough to battle them.
+
+Reach the **Terminus** and free your people!
+
+How the story shows up in play: [Story in the Game](design/story.md).
 
 The design is split into pages under [`design/`](design/):
 
@@ -8,6 +18,7 @@ The design is split into pages under [`design/`](design/):
 
 - [Tech Stack](design/foundations/tech-stack.md): JavaScript, Vite, Three.js, saving
 - [Visual Style](design/foundations/visual-style.md): low-poly, gritty look and interface
+- [Test Console](design/foundations/test-console.md): cheats and tuning for testing
 
 ## Game Play
 
@@ -38,7 +49,7 @@ The design is split into pages under [`design/`](design/):
 ## Online
 
 - [Escorts](design/online/escorts.md): phone and laptop helpers
-- [Leaderboard](design/online/leaderboard.md)
+- [Leaderboard](design/online/leaderboard.md): Lane Records, score, run clock
 
 ## Review
 

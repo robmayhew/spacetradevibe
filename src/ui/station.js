@@ -182,7 +182,7 @@ export class StationScreen {
     }
     return `<h3>${sys.name}${sys.terminus ? ' ★' : ''}</h3>
       <div>Tier ${diffBadge(sys.tier)} · ${visited ? 'Visited' : 'Unexplored'} · ${sys.links.length} lanes</div>
-      ${sys.terminus ? '<div class="accent">Final destination. Deliver here to win.</div>' : ''}
+      ${sys.terminus ? '<div class="accent">The KL9 core. Deliver the shutdown code here to win.</div>' : ''}${sys.home ? '<div class="accent">Your home world.</div>' : ''}
       ${route}`;
   }
 
@@ -214,7 +214,7 @@ export class StationScreen {
             <span class="payout">${stats.cargo} × ${c.pay} = <b>${fmt(total)} cr</b></span>
           </div>
           <div class="c-danger">${dangerTag(c.difficulty, rating)}${c.difficulty > rating ? `<span class="muted small">Rating ${rating} vs difficulty ${c.difficulty}</span>` : ''}</div>
-          ${dest.terminus ? '<div class="accent small">Final destination. Expect heavy resistance and a capital ship.</div>' : ''}
+          ${dest.terminus ? '<div class="accent small">The KL9 core. Deliver the shutdown code here to win. Expect their heaviest defense and a capital ship.</div>' : ''}
         </button>`;
       })
       .join('');

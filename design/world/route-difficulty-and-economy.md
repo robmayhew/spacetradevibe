@@ -21,6 +21,6 @@ Better goods unlock at higher difficulties:
 | 9 | Singularity Shards |
 | 10 | Void Relics |
 
-A route of difficulty d offers goods unlocked at d, d−1 or d−2. The route to the Terminus carries the special cargo **Founders' Beacon**.
+A route of difficulty d offers goods unlocked at d, d−1 or d−2. The route to the Terminus carries the special cargo **KL9 Shutdown Code** (see [Story in the Game](../story.md)).
 
 With this tuning, reaching each new rating takes roughly 2–3 deliveries.

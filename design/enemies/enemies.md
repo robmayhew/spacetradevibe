@@ -2,6 +2,8 @@
 
 # Enemies
 
+Every enemy belongs to the **KL9** robot army and carries a glowing red sensor eye. They can only attack at warp, which is why combat only happens while travelling (see [Story in the Game](../story.md)).
+
 Enemy stats scale with route difficulty (d):
 
 - HP ×1.75^(d−1)

@@ -103,7 +103,7 @@ export class DockView {
     this.target.assigned = true;
     this.styleAssignedPad();
 
-    const ship = createPlayerShip();
+    const ship = createPlayerShip(undefined, { loadout: { upgrades: state.upgrades, weapons: state.weapons } });
     this.ship = ship;
     this.scene.add(ship.group);
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };
@@ -347,7 +347,7 @@ export class DockView {
           this.setPhase('jump');
           this.hint = '';
           this.audio.play('launch');
-          this.hud.banner('Departing', 'Engaging drive…');
+          this.hud.banner('Engaging warp', 'The KL9 hunt at warp. Stay sharp.');
         }
         break;
       case 'docked':
@@ -449,6 +449,8 @@ export class DockView {
     g.position.set(p.x, p.y, 0.5);
     this.ship.flame.visible = ay > 0 || this.phase === 'jump' || this.phase === 'arrive';
     this.ship.flame.scale.set(1, 0.7 + Math.random() * 0.5 + (this.phase === 'jump' ? 1.2 : 0), 1);
+    this.ship.setDamage(1 - p.hull / p.maxHull);
+    this.ship.update(dt, this.particles, p.x, p.y);
 
     // Guide line to the objective
     const pos = this.guide.geometry.attributes.position;

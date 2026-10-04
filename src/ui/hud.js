@@ -23,7 +23,7 @@ export class TravelHUD {
         <div class="hud-bc weapons">
           ${WEAPON_ORDER.map(
             (id, i) => `<div class="wslot ${owned.includes(id) ? '' : 'locked'}" data-w="${id}">
-              <kbd>${i + 1}</kbd>${WEAPONS[id].name}</div>`,
+              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}</div>`,
           ).join('')}
         </div>
         <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-4 / Q E weapons · Esc pause</div>
@@ -59,7 +59,16 @@ export class TravelHUD {
     fn(value);
   }
 
-  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto }) {
+  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, seeker }) {
+    if (seeker) {
+      const label = seeker.reload > 0 ? `${seeker.reload.toFixed(1)}s` : '▮'.repeat(seeker.ammo) + '▯'.repeat(seeker.max - seeker.ammo);
+      this.set('seeker', label, (v) => {
+        const el = this.root.querySelector('.wslot[data-w="seeker"] .ammo');
+        if (!el) return;
+        el.textContent = v;
+        el.classList.toggle('reloading', seeker.reload > 0);
+      });
+    }
     this.set('hull', Math.ceil(hull), (v) => {
       this.el.hull.style.width = `${(100 * v) / maxHull}%`;
       this.el.hullV.textContent = `${Math.max(0, v)}/${maxHull}`;

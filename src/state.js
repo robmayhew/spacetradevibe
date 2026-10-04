@@ -89,7 +89,7 @@ export function generateContracts(state, galaxy) {
       const dist = systemDistance(here, dest);
       let good;
       if (dest.terminus) {
-        good = { name: 'Founders’ Beacon', base: 60 };
+        good = { name: 'KL9 Shutdown Code', base: 60 };
       } else {
         good = pick(GOODS.filter((g) => g.tier <= difficulty && g.tier >= difficulty - 2));
       }

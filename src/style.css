@@ -289,3 +289,6 @@ body.has-party:has(.station) .party-panel { bottom: 84px; }
 .dc-line { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line); }
 .dc-line span { color: var(--cyan); }
 .dc-line input { flex: 1; background: none; border: none; outline: none; color: #fff; font: inherit; }
+
+.wslot .ammo { color: var(--gold); letter-spacing: 0.05em; margin-left: 4px; }
+.wslot .ammo.reloading { color: var(--muted); }
