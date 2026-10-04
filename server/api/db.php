@@ -31,6 +31,19 @@ function json_error(int $status, string $message): void {
     json_out(['error' => $message], $status);
 }
 
+function ensure_runs_paced(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        $pdo->exec('ALTER TABLE runs ADD COLUMN paced TINYINT UNSIGNED NOT NULL DEFAULT 1');
+    } catch (PDOException $e) {
+        // column already exists
+    }
+}
+
 function client_ip(): string {
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 }

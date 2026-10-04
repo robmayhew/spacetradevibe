@@ -80,6 +80,7 @@ export function paceMatchingEnabled() {
 function hasReturningMarker() {
   try {
     if (localStorage.getItem(SAVE_KEY)) return true;
+    if (localStorage.getItem('txl-trader-saves-v1')) return true;
     if (localStorage.getItem(CALLSIGN_KEY)) return true;
     if (localStorage.getItem(MUTE_LEGACY) !== null) return true;
     if (localStorage.getItem(PREFS_KEY)) return true;

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS runs (
   deliveries INT UNSIGNED NOT NULL,
   seed BIGINT NOT NULL,
   status VARCHAR(8) NOT NULL DEFAULT 'done',
+  paced TINYINT UNSIGNED NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NULL,
   UNIQUE KEY run_id (run_id),
@@ -76,6 +77,6 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 -- Existing Plesk DBs: run these after pull if the columns are missing.
 -- ALTER TABLE party_rooms ADD COLUMN frame MEDIUMTEXT NULL;
--- ALTER TABLE runs ADD COLUMN status VARCHAR(8) NOT NULL DEFAULT 'done';
+-- ALTER TABLE runs ADD COLUMN paced TINYINT UNSIGNED NOT NULL DEFAULT 1;
 -- ALTER TABLE runs ADD KEY status_updated (status, updated_at);
 -- CREATE TABLE feedback ... (see CREATE TABLE above if the table is missing).

@@ -1,6 +1,6 @@
 import { generateGalaxy } from './galaxy.js';
 import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load, recordFlight } from './state.js';
+import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave } from './state.js';
 import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
@@ -21,6 +21,7 @@ import {
   runScore,
   saveCallsign,
   submitRun,
+  uniqueCallsign,
 } from './score.js';
 import { VERSION } from './changelog.js';
 import { shouldShowWhatsNew } from './prefs.js';
@@ -74,7 +75,7 @@ export class Game {
     this.showMenu();
   }
 
-  showMenu() {
+  showMenu(view = 'home') {
     this.flushClock();
     this.screen = 'menu';
     this.station?.destroy();
@@ -82,17 +83,36 @@ export class Game {
     this.app.hud.innerHTML = '';
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
-    const showWhatsNew = shouldShowWhatsNew(VERSION);
+    const slots = listSlots();
+    const showWhatsNew = view === 'home' && shouldShowWhatsNew(VERSION);
     renderMenu(this.app.ui, {
-      hasSave: !!load(),
-      callsign: ensureCallsign(),
+      slots,
+      view,
       showWhatsNew,
-      onNew: () => this.newGame(),
-      onContinue: () => this.continueGame(),
+      onContinue: () => this.showMenu('continue'),
+      onPickSave: (index) => this.continueGame(index),
+      onDeleteSave: async (index) => {
+        await abandonRun(peekSlot(index));
+        clearSave(index);
+        const cur = load();
+        if (!this.state || !cur || cur.runId !== this.state.runId) this.state = null;
+        this.showMenu(occupiedSlots().length ? 'continue' : 'home');
+      },
+      onNew: () => {
+        this.replaceSlot = null;
+        if (freeSlotIndex() < 0) this.showMenu('replace');
+        else this.showMenu('new');
+      },
+      onReplace: (index) => {
+        this.replaceSlot = index;
+        this.showMenu('new');
+      },
+      onStart: (name) => this.newGame(name, this.replaceSlot),
+      onBack: () => this.showMenu('home'),
       onLeaderboard: () => this.showLeaderboard(),
       onSettings: (panel) => this.showSettings(panel),
-      onCallsign: (name) => saveCallsign(name),
     });
+    if (view !== 'new') this.replaceSlot = null;
   }
 
   showLeaderboard() {
@@ -112,8 +132,10 @@ export class Game {
       initialPanel: panel || 'hub',
       onBack: () => this.showMenu(),
       onSaveCleared: () => {
-        this.state = null;
+        const cur = load();
+        if (!this.state || !cur || cur.runId !== this.state.runId) this.state = null;
       },
+      onQrLock: (on) => this.app.party?.setQrVisible(on, true),
     });
   }
 
@@ -122,28 +144,38 @@ export class Game {
     this.starmap = new StarMapView(this.galaxy, this.app.pixelRatio);
   }
 
-  async newGame() {
+  async newGame(name, replaceIndex) {
     this.app.audio.play('click');
-    const prev = load();
+    const taken = occupiedSlots()
+      .filter((s) => s.index !== replaceIndex)
+      .map((s) => s.callsign);
+    const callsign = uniqueCallsign(name, taken);
+    const slot = Number.isInteger(replaceIndex) ? replaceIndex : freeSlotIndex();
+    if (slot < 0) return this.showMenu('replace');
+    const prev = peekSlot(slot);
     if (hasRunClock(prev)) await abandonRun(prev);
     this.setGalaxy(Math.floor(Math.random() * 2 ** 31));
     this.state = newState(this.galaxy);
+    this.state.callsign = callsign;
     generateContracts(this.state, this.galaxy);
-    save(this.state);
+    writeActive(this.state, slot);
+    saveCallsign(callsign);
+    this.replaceSlot = null;
     this.showStation({
       kind: 'info',
       title: 'Welcome, Trader',
-      lines: [['Starting credits', `${this.state.credits} cr`]],
+      lines: [['Callsign', callsign], ['Starting credits', `${this.state.credits} cr`]],
       note: 'Haul cargo along the lanes of difficulty 1 to earn credits, then upgrade your ship to take on harder routes. The Terminus waits at the far edge of the map.',
     });
   }
 
-  continueGame() {
+  continueGame(index) {
     this.app.audio.play('click');
-    const s = load();
+    const s = load(index);
     if (!s) return this.showMenu();
     if (this.galaxy?.seed !== s.seed) this.setGalaxy(s.seed);
     this.state = s;
+    if (s.callsign) saveCallsign(s.callsign);
     if (!s.contracts?.length) generateContracts(s, this.galaxy);
     this.showStation();
   }
@@ -342,7 +374,7 @@ export class Game {
     const score = runScore(s.stats);
     const timed = hasRunClock(s);
     const timeLabel = timed ? formatRunTime(s.runMs) : '—';
-    const priorName = ensureCallsign();
+    const priorName = s.callsign || ensureCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
         <h1 class="logo">TERMINUS<span>REACHED</span></h1>
@@ -355,6 +387,7 @@ export class Game {
           <div class="r-line"><span>Ships lost</span><b>${s.stats.deaths}</b></div>
           <div class="r-line"><span>Systems visited</span><b>${s.visited.length} / ${this.galaxy.systems.length}</b></div>
           <div class="r-line"><span>Run time</span><b>${timeLabel}</b></div>
+          <div class="r-line"><span>Pace matching</span><b>${s.paced !== false ? 'On' : 'Off'}</b></div>
           <div class="r-line"><span>Credits</span><b class="accent">+${fmt(score.earned)}</b></div>
           <div class="r-line"><span>Kills × 50</span><b class="accent">+${fmt(score.killPts)}</b></div>
           <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
@@ -421,6 +454,7 @@ export class Game {
         deliveries: s.stats.deliveries,
         seed: s.seed,
         status: 'done',
+        paced: s.paced !== false,
       });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
@@ -437,7 +471,7 @@ export class Game {
   pushLiveScore() {
     const s = this.state;
     if (!hasRunClock(s) || s.won || s.cheated) return;
-    const callsign = loadCallsign().trim() || ensureCallsign();
+    const callsign = (s.callsign || loadCallsign() || ensureCallsign()).trim();
     if (!CALLSIGN_RE.test(callsign)) return;
     const score = runScore(s.stats);
     submitRun({
@@ -452,6 +486,7 @@ export class Game {
       deliveries: s.stats.deliveries,
       seed: s.seed,
       status: 'live',
+      paced: s.paced !== false,
     }).catch(() => {});
   }
 }

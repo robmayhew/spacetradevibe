@@ -1,6 +1,7 @@
 import QRCode from 'qrcode/lib/browser.js';
 import { partyPost } from './api.js';
 import { escortHex } from './colors.js';
+import { loadPrefs, savePrefs } from '../prefs.js';
 
 const ROOM_KEY = 'txl-party-host';
 
@@ -12,12 +13,10 @@ export class PartyHost {
     this.peer = null;
     this.token = null;
     this.mode = 'wait';
-    this.frame = null;
-    this.frameDirty = false;
+    this.brief = null;
     this.escorts = new Map();
     this.pollTimer = 0;
     this.sendAcc = 0;
-    this.frameAcc = 0;
     this.crewKey = '';
     this.mount();
   }
@@ -28,6 +27,7 @@ export class PartyHost {
         <div class="eyebrow">Escorts</div>
         <img class="party-qr hidden" alt="Join QR" />
         <div class="party-code"></div>
+        <p class="muted small party-hint">Locked in Settings</p>
         <ul class="party-crew"></ul>
       </div>`;
     this.el = {
@@ -48,10 +48,11 @@ export class PartyHost {
     };
   }
 
-  setQrVisible(on) {
+  setQrVisible(on, persist = false) {
     this.el.panel.classList.toggle('qr-hidden', !on);
     this.el.qr.classList.toggle('hidden', !on);
     document.body.classList.toggle('party-qr-hidden', !on);
+    if (persist) savePrefs({ showQr: !!on });
   }
 
   async start() {
@@ -92,7 +93,7 @@ export class PartyHost {
     this.el.code.textContent = this.room;
     this.el.panel.classList.remove('hidden');
     document.body.classList.add('has-party');
-    this.setQrVisible(false);
+    this.setQrVisible(loadPrefs().showQr);
     this.renderCrew();
     this.pollTimer = window.setInterval(() => this.poll(), 100);
   }
@@ -117,18 +118,12 @@ export class PartyHost {
   }
 
   setMode(mode) {
-    if (this.mode === 'travel' && mode !== 'travel') {
-      this.frame = null;
-      if (this.ready) {
-        partyPost({ action: 'frame', room: this.room, token: this.token, frame: null }).catch(() => {});
-      }
-    }
+    if (this.mode === 'travel' && mode !== 'travel') this.brief = null;
     this.mode = mode;
   }
 
-  setFrame(frame) {
-    this.frame = frame;
-    this.frameDirty = true;
+  setBrief(brief) {
+    this.brief = brief;
   }
 
   setVitals(id, hull, maxHull) {
@@ -141,7 +136,6 @@ export class PartyHost {
   tick(dt) {
     if (!this.ready) return;
     this.sendAcc += dt;
-    this.frameAcc += dt;
     if (this.sendAcc >= 0.2) {
       this.sendAcc = 0;
       const hulls = [...this.escorts.values()].map((e) => ({
@@ -149,14 +143,14 @@ export class PartyHost {
         hull: e.hull ?? 1,
         maxHull: e.maxHull ?? 1,
       }));
-      partyPost({ action: 'vitals', room: this.room, token: this.token, mode: this.mode, hulls }).catch(() => {});
-    }
-    if (this.frameAcc >= 0.1) {
-      this.frameAcc = 0;
-      if (this.mode === 'travel' && this.frame && this.frameDirty && this.hasEscorts()) {
-        this.frameDirty = false;
-        partyPost({ action: 'frame', room: this.room, token: this.token, frame: this.frame }).catch(() => {});
-      }
+      partyPost({
+        action: 'vitals',
+        room: this.room,
+        token: this.token,
+        mode: this.mode,
+        hulls,
+        brief: this.mode === 'travel' ? this.brief : null,
+      }).catch(() => {});
     }
   }
 

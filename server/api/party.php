@@ -224,6 +224,44 @@ function clamp_axis($v): float {
     return $n;
 }
 
+function party_brief_payload($raw): ?array {
+    if ($raw === null) return null;
+    if (!is_array($raw)) return null;
+    $str = static function ($v, int $n): string {
+        return substr(trim((string) $v), 0, $n);
+    };
+    $num = static function ($v): float {
+        return is_numeric($v) ? (float) $v : 0.0;
+    };
+    return [
+        'wt' => $str($raw['wt'] ?? '', 48),
+        'from' => $str($raw['from'] ?? '', 24),
+        'to' => $str($raw['to'] ?? '', 24),
+        'wpn' => $str($raw['wpn'] ?? '', 16),
+        'capH' => $num($raw['capH'] ?? 0),
+        'capM' => $num($raw['capM'] ?? 0),
+        'sh' => $num($raw['sh'] ?? 0),
+        'sm' => $num($raw['sm'] ?? 0),
+        'by' => (int) $num($raw['by'] ?? 0),
+        'k' => (int) $num($raw['k'] ?? 0),
+        'es' => (int) $num($raw['es'] ?? 0),
+        'en' => (int) $num($raw['en'] ?? 0),
+    ];
+}
+
+function escort_status(array $who, array $row, ?array $brief): array {
+    $out = [
+        'ok' => true,
+        'mode' => ($row['mode'] ?? 'wait') === 'travel' ? 'travel' : 'wait',
+        'hull' => isset($row['hull']) ? (float) $row['hull'] : 1,
+        'maxHull' => isset($row['max_hull']) ? (float) $row['max_hull'] : 1,
+        'color' => (int) ($who['color'] ?? 0),
+        'callsign' => $who['callsign'] ?? 'ESCORT',
+    ];
+    if ($brief && (isset($brief['wt']) || isset($brief['capH']))) $out['brief'] = $brief;
+    return $out;
+}
+
 function party_input(PDO $pdo, array $body): array {
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
@@ -242,19 +280,7 @@ function party_input(PDO $pdo, array $body): array {
     $live = $pdo->prepare('SELECT hull, max_hull, mode FROM party_live WHERE peer = ? AND room = ?');
     $live->execute([$who['peer'], $code]);
     $row = $live->fetch() ?: [];
-    $out = [
-        'ok' => true,
-        'mode' => ($row['mode'] ?? 'wait') === 'travel' ? 'travel' : 'wait',
-        'hull' => isset($row['hull']) ? (float) $row['hull'] : 1,
-        'maxHull' => isset($row['max_hull']) ? (float) $row['max_hull'] : 1,
-        'color' => (int) ($who['color'] ?? 0),
-        'callsign' => $who['callsign'] ?? 'ESCORT',
-    ];
-    if (!empty($body['screen'])) {
-        $out['frame'] = party_read_frame($pdo, $code);
-        $out['peer'] = $who['peer'];
-    }
-    return $out;
+    return escort_status($who, $row, party_read_frame($pdo, $code));
 }
 
 function party_vitals(PDO $pdo, array $body): array {
@@ -287,6 +313,17 @@ function party_vitals(PDO $pdo, array $body): array {
     $st = $pdo->prepare('UPDATE party_live SET hull = ?, max_hull = ?, mode = ? WHERE peer = ? AND room = ?');
     foreach ($byPeer as $peer => [$hull, $max]) {
         $st->execute([$hull, $max, $mode, $peer, $code]);
+    }
+    if (array_key_exists('brief', $body)) {
+        if ($body['brief'] === null) {
+            $pdo->prepare('UPDATE party_rooms SET frame = NULL, touched_at = NOW() WHERE code = ?')->execute([$code]);
+        } else {
+            $payload = party_brief_payload($body['brief']);
+            $json = $payload ? json_encode($payload) : 'null';
+            if ($json !== false && strlen($json) <= 1500) {
+                $pdo->prepare('UPDATE party_rooms SET frame = ?, touched_at = NOW() WHERE code = ?')->execute([$json, $code]);
+            }
+        }
     }
     return ['ok' => true];
 }
@@ -325,14 +362,7 @@ function party_poll(PDO $pdo, array $body): array {
     $st = $pdo->prepare('SELECT hull, max_hull, mode FROM party_live WHERE peer = ? AND room = ?');
     $st->execute([$who['peer'], $code]);
     $row = $st->fetch() ?: [];
-    return [
-        'ok' => true,
-        'mode' => ($row['mode'] ?? 'wait') === 'travel' ? 'travel' : 'wait',
-        'hull' => isset($row['hull']) ? (float) $row['hull'] : 1,
-        'maxHull' => isset($row['max_hull']) ? (float) $row['max_hull'] : 1,
-        'color' => (int) ($who['color'] ?? 0),
-        'callsign' => $who['callsign'] ?? 'ESCORT',
-    ];
+    return escort_status($who, $row, party_read_frame($pdo, $code));
 }
 
 function party_leave(PDO $pdo, array $body): array {

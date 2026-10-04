@@ -42,7 +42,7 @@ export function renderLeaderboard(root, { onBack }) {
           .map(
             (r, i) => `<tr>
               <td>${r.rank ?? i + 1}</td>
-              <td>${escapeHtml(r.callsign)} <span class="${r.status === 'live' ? 'board-live' : 'board-done'}">${r.status === 'live' ? 'In flight' : 'Arrived'}</span></td>
+              <td>${escapeHtml(r.callsign)} <span class="${r.status === 'live' ? 'board-live' : 'board-done'}">${r.status === 'live' ? 'In flight' : 'Arrived'}</span>${r.paced === false ? ' <span class="board-pace">Unpaced</span>' : ''}</td>
               <td>${fmt(r.score)}</td>
               <td>${formatRunTime(r.time_ms)}</td>
             </tr>`,

@@ -242,6 +242,8 @@ function buildCommands(dc) {
         for (const w of ids) {
           if (!WEAPONS[w]) throw new Error(`Unknown weapon "${id}"`);
           if (!s().weapons.includes(w)) s().weapons.push(w);
+          if (!s().weaponLevels) s().weaponLevels = {};
+          if (!s().weaponLevels[w]) s().weaponLevels[w] = 1;
         }
         return `Weapons: ${s().weapons.join(', ')}. Takes effect next flight.`;
       },

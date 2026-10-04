@@ -68,6 +68,22 @@ export function ensureCallsign() {
   return name;
 }
 
+export function uniqueCallsign(desired, taken = []) {
+  let base = String(desired || '').trim();
+  if (!CALLSIGN_RE.test(base)) base = randomCallsign();
+  const used = new Set((taken || []).map((n) => String(n).trim().toLowerCase()).filter(Boolean));
+  if (!used.has(base.toLowerCase())) return base;
+  for (let n = 2; n < 100; n++) {
+    const suffix = `-${n}`;
+    let stem = base;
+    while (stem.length + suffix.length > 16) stem = stem.slice(0, -1);
+    if (stem.length < 1) break;
+    const next = `${stem}${suffix}`;
+    if (CALLSIGN_RE.test(next) && !used.has(next.toLowerCase())) return next;
+  }
+  return randomCallsign();
+}
+
 export async function fetchBoard(sort = 'score') {
   const res = await fetch(`${API}/board.php?sort=${sort === 'time' ? 'time' : 'score'}`);
   if (!res.ok) throw new Error('offline');
@@ -92,7 +108,7 @@ export async function submitRun(payload) {
 
 function runPayload(state, status) {
   const score = runScore(state.stats);
-  const callsign = loadCallsign().trim() || ensureCallsign();
+  const callsign = String(state.callsign || loadCallsign() || '').trim();
   return {
     run_id: state.runId,
     callsign,
@@ -105,6 +121,7 @@ function runPayload(state, status) {
     deliveries: state.stats?.deliveries ?? 0,
     seed: state.seed ?? 0,
     status,
+    paced: state.paced !== false,
   };
 }
 

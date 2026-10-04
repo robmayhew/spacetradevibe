@@ -28,6 +28,44 @@ function clampAxis(v) {
   return Math.max(-1, Math.min(1, n));
 }
 
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizeBrief(raw) {
+  if (raw == null) return null;
+  if (typeof raw !== 'object') return null;
+  const str = (v, n) => String(v ?? '').slice(0, n);
+  return {
+    wt: str(raw.wt, 48),
+    from: str(raw.from, 24),
+    to: str(raw.to, 24),
+    wpn: str(raw.wpn, 16),
+    capH: num(raw.capH),
+    capM: num(raw.capM),
+    sh: num(raw.sh),
+    sm: num(raw.sm),
+    by: Math.round(num(raw.by)),
+    k: Math.round(num(raw.k)),
+    es: Math.round(num(raw.es)),
+    en: Math.round(num(raw.en)),
+  };
+}
+
+function escortView(who, live, brief) {
+  const out = {
+    ok: true,
+    mode: live?.mode === 'travel' ? 'travel' : 'wait',
+    hull: live?.hull ?? 1,
+    maxHull: live?.maxHull ?? 1,
+    color: who.color ?? 0,
+    callsign: who.callsign ?? 'ESCORT',
+  };
+  if (brief && (brief.wt != null || brief.capH != null)) out.brief = brief;
+  return out;
+}
+
 export function createPartyStore() {
   const rooms = new Map();
 
@@ -85,6 +123,7 @@ export function createPartyStore() {
           escorts: [],
           live: new Map(),
           frame: null,
+          brief: null,
           touched: now(),
         });
         return { ok: true, room: c, peer: hostPeer, token: tok, role: 'host' };
@@ -133,19 +172,7 @@ export function createPartyStore() {
           updated: now(),
         };
         room.live.set(who.peer, live);
-        const out = {
-          ok: true,
-          mode: live.mode === 'travel' ? 'travel' : 'wait',
-          hull: live.hull ?? 1,
-          maxHull: live.maxHull ?? 1,
-          color: who.color ?? 0,
-          callsign: who.callsign ?? 'ESCORT',
-        };
-        if (body.screen) {
-          out.frame = room.frame || null;
-          out.peer = who.peer;
-        }
-        return out;
+        return escortView(who, live, room.brief || null);
       }
       if (action === 'vitals') {
         const room = getRoom(String(body.room || '').toUpperCase());
@@ -177,6 +204,9 @@ export function createPartyStore() {
             maxHull: hull ? hull.maxHull : prev.maxHull ?? 1,
           });
         }
+        if (Object.prototype.hasOwnProperty.call(body, 'brief')) {
+          room.brief = body.brief == null ? null : sanitizeBrief(body.brief);
+        }
         return { ok: true };
       }
       if (action === 'poll') {
@@ -201,14 +231,7 @@ export function createPartyStore() {
           return { ok: true, escorts };
         }
         const live = room.live.get(who.peer);
-        return {
-          ok: true,
-          mode: live?.mode === 'travel' ? 'travel' : 'wait',
-          hull: live?.hull ?? 1,
-          maxHull: live?.maxHull ?? 1,
-          color: who.color ?? 0,
-          callsign: who.callsign ?? 'ESCORT',
-        };
+        return escortView(who, live, room.brief || null);
       }
       if (action === 'frame') {
         const room = getRoom(String(body.room || '').toUpperCase());
@@ -371,6 +394,7 @@ export function createBoardStore() {
           score: r.score,
           time_ms: r.time_ms,
           status: r.status === 'live' ? 'live' : 'done',
+          paced: r.paced !== false,
           rank: i + 1,
         })),
       };
@@ -407,6 +431,7 @@ export function createBoardStore() {
       const deaths = intField(body, 'deaths', 1000);
       const deliveries = intField(body, 'deliveries', 10000);
       const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : 0;
+      const paced = body.paced === false || body.paced === 0 || body.paced === '0' ? false : true;
       const expected = earned + kills * 50 + bosses * 2500 - deaths * 1000;
       if (score !== expected) {
         const err = new Error('Invalid score.');
@@ -442,6 +467,7 @@ export function createBoardStore() {
         deaths,
         deliveries,
         seed,
+        paced,
         status: nextStatus,
         updated: now(),
       };

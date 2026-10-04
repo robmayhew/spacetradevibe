@@ -56,8 +56,77 @@ export const SYSTEMS = {
     value: (l) => 8 + 4 * (l - 1),
     format: (v) => `${v} units`,
   },
+  hardpoints: {
+    name: 'Hardpoints',
+    desc: 'Extra mounts that auto-fire assigned guns while you fly the primary.',
+    start: 1,
+    max: 3,
+    baseCost: 900,
+    value: (l) => l,
+    format: (v) => (v <= 1 ? 'Primary only' : `${v} mounts`),
+  },
 };
-export const SYSTEM_ORDER = ['core', 'hull', 'shield', 'engine', 'cargo'];
+export const SYSTEM_ORDER = ['core', 'hull', 'shield', 'engine', 'cargo', 'hardpoints'];
+
+export const WEAPON_MAX_LEVEL = 5;
+
+export function weaponLevelMult(level) {
+  const l = Math.max(1, Number(level) || 1);
+  return 1 + 0.07 * (l - 1);
+}
+
+export function weaponRateMult(level) {
+  const l = Math.max(1, Number(level) || 1);
+  return 1 + 0.04 * (l - 1);
+}
+
+// Extra hardpoints fire in the background at this share of the gun's own rate.
+export const MOUNT_RATE_MULT = 0.55;
+export const MOUNT_DMG_MULT = 0.85;
+
+export function canMountWeapon(id) {
+  return !!(WEAPONS[id] && WEAPONS[id].kind !== 'beam');
+}
+
+export const ESCORT_BAY = {
+  hull: {
+    name: 'Wing plating',
+    desc: 'Hull for every escort that joins this run.',
+    start: 1,
+    max: 6,
+    baseCost: 80,
+    value: (l) => Math.round(28 * (1 + 0.2 * (l - 1))),
+    format: (v) => `${v} hull`,
+  },
+  core: {
+    name: 'Wing guns',
+    desc: 'Bolt damage for the escort wing, as a share of your pulse.',
+    start: 1,
+    max: 6,
+    baseCost: 95,
+    value: (l) => +(0.2 * (1 + 0.18 * (l - 1))).toFixed(3),
+    format: (v) => `${Math.round(v * 100)}% pulse`,
+  },
+  engine: {
+    name: 'Wing engines',
+    desc: 'How closely escorts match your combat speed.',
+    start: 1,
+    max: 5,
+    baseCost: 90,
+    value: (l) => +(0.82 + 0.07 * (l - 1)).toFixed(2),
+    format: (v) => `${Math.round(v * 100)}% speed`,
+  },
+  rate: {
+    name: 'Wing cyclic',
+    desc: 'How fast escorts fire their pulse.',
+    start: 1,
+    max: 5,
+    baseCost: 85,
+    value: (l) => +(4 + 0.7 * (l - 1)).toFixed(1),
+    format: (v) => `${v}/s`,
+  },
+};
+export const ESCORT_BAY_ORDER = ['hull', 'core', 'engine', 'rate'];
 
 export const SHIPS = {
   hauler: {
@@ -205,11 +274,11 @@ export const WEAPONS = {
     cost: 1600,
     color: 0xff44ff,
     kind: 'homing',
-    rate: 1.7,
-    dmg: 24,
+    rate: 1.25,
+    dmg: 16,
     count: 2,
     sfx: 'seeker',
-    stat: '82 dps · homing',
+    stat: '40 dps · homing',
   },
   rail: {
     name: 'Rail Lance',
@@ -239,9 +308,9 @@ export const WEAPONS = {
     cost: 7000,
     color: 0xff66aa,
     kind: 'homing',
-    rate: 1.5,
-    dmg: 9,
-    count: 5,
+    rate: 1.2,
+    dmg: 7,
+    count: 4,
     sfx: 'seeker',
     stat: 'homing swarm',
   },

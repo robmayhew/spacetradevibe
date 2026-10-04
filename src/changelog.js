@@ -1,6 +1,50 @@
-export const VERSION = '0.3.2';
+export const VERSION = '0.3.8';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.8',
+    notes: [
+      'Pace matching also tightens slightly after a very fast clear',
+      'Seekers and weapon tune hit less hard; extra mounts fire slower',
+      'A mounted gun is locked off the 1–8 primary so it cannot double up',
+      'Gameplay settings can turn off pace matching; Lane Records tags those runs Unpaced',
+    ],
+  },
+  {
+    version: '0.3.7',
+    notes: [
+      'Hardpoints auto-fire extra guns while you keep a primary',
+      'Each installed weapon can be tuned up to level 5',
+      'Spend credits on the escort wing for anyone who joins',
+      'Ship Systems leads with Systems; Hangar is last, with looping previews',
+    ],
+  },
+  {
+    version: '0.3.6',
+    notes: [
+      'Continue lists each save with a delete button',
+    ],
+  },
+  {
+    version: '0.3.5',
+    notes: [
+      'Laptop and desktop escorts keep WASD control without mirroring combat',
+      'Joining from a large screen shows your ship and flight stats instead',
+    ],
+  },
+  {
+    version: '0.3.4',
+    notes: [
+      'Callsign is chosen when you start a new game and names that save',
+      'Three save slots; a duplicate callsign gets a number',
+    ],
+  },
+  {
+    version: '0.3.3',
+    notes: [
+      'Lock the escort QR in the corner from Settings so others can scan it',
+    ],
+  },
   {
     version: '0.3.2',
     notes: [
@@ -60,7 +104,6 @@ export const CREDITS = [
     role: 'Contributor',
     name: 'Jacky Tai',
     url: 'https://www.linkedin.com/in/jackytai/',
-    extra: [{ label: 'email', url: 'mailto:dev@itrealsimple.com' }],
   },
 ];
 

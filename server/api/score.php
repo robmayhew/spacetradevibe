@@ -57,6 +57,11 @@ $bosses = $int('bosses', 1000);
 $deaths = $int('deaths', 1000);
 $deliveries = $int('deliveries', 10000);
 $seed = isset($body['seed']) && is_numeric($body['seed']) ? (int) $body['seed'] : 0;
+$paced = 1;
+if (array_key_exists('paced', $body)) {
+    $rawPace = $body['paced'];
+    $paced = ($rawPace === false || $rawPace === 0 || $rawPace === '0' || $rawPace === 'false') ? 0 : 1;
+}
 
 $expected = $earned + $kills * 50 + $bosses * 2500 - $deaths * 1000;
 if ($score !== $expected) {
@@ -64,6 +69,7 @@ if ($score !== $expected) {
 }
 
 $pdo = db();
+ensure_runs_paced($pdo);
 $st = $pdo->prepare('SELECT status, score, time_ms, UNIX_TIMESTAMP(updated_at) AS updated_unix FROM runs WHERE run_id = ?');
 $st->execute([$runId]);
 $prev = $st->fetch() ?: null;
@@ -98,8 +104,8 @@ if ($needRate) {
 }
 
 $pdo->prepare(
-    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, paced, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        callsign = VALUES(callsign),
        score = VALUES(score),
@@ -110,13 +116,14 @@ $pdo->prepare(
        deaths = VALUES(deaths),
        deliveries = VALUES(deliveries),
        seed = VALUES(seed),
+       paced = VALUES(paced),
        status = CASE
          WHEN status = \'done\' THEN \'done\'
          WHEN status = \'void\' THEN \'void\'
          ELSE VALUES(status)
        END,
        updated_at = NOW()'
-)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed, $status]);
+)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed, $status, $paced]);
 
 json_out(run_ranks($pdo, $score, $timeMs));
 

@@ -2,12 +2,13 @@ import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
 import { fetchFeatures, submitFeedback } from '../feedback.js';
 import { abandonRun, CALLSIGN_RE, ensureCallsign } from '../score.js';
-import { clearSave, load } from '../state.js';
+import { clearSave, listSlots, peekSlot, load, save } from '../state.js';
 
 const PANELS = {
   hub: 'Settings',
   audio: 'Audio',
   display: 'Display',
+  gameplay: 'Gameplay',
   escorts: 'Escorts',
   save: 'Save',
   about: 'About',
@@ -15,16 +16,16 @@ const PANELS = {
   feature: 'Feature requests',
 };
 
-export function renderSettings(root, { audio, party, initialPanel = 'hub', onBack, onSaveCleared }) {
+export function renderSettings(root, { audio, party, initialPanel = 'hub', onBack, onSaveCleared, onQrLock }) {
   let panel = PANELS[initialPanel] ? initialPanel : 'hub';
-  let hasSave = !!load();
+  let slots = listSlots();
 
   const draw = () => {
     root.innerHTML = `
       <div class="menu settings-menu">
         <h1 class="logo">SET<span>TINGS</span></h1>
-        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, escorts, save, version history, and feedback.' : PANELS[panel])}</p>
-        ${panelBody(panel, { audio, hasSave, party })}
+        <p class="tagline">${escapeHtml(PANELS[panel] === 'Settings' ? 'Audio, display, gameplay, escorts, save, version history, and feedback.' : PANELS[panel])}</p>
+        ${panelBody(panel, { audio, slots, party })}
         <div class="menu-buttons">
           ${panel === 'hub' ? '<button class="btn big" data-act="back">Back</button>' : '<button class="btn big" data-act="hub">Back to Settings</button>'}
         </div>
@@ -37,11 +38,12 @@ export function renderSettings(root, { audio, party, initialPanel = 'hub', onBac
         draw();
       },
       refreshSave: () => {
-        hasSave = !!load();
+        slots = listSlots();
         draw();
       },
       onBack,
       onSaveCleared,
+      onQrLock,
       party,
     });
   };
@@ -49,11 +51,12 @@ export function renderSettings(root, { audio, party, initialPanel = 'hub', onBac
   draw();
 }
 
-function panelBody(panel, { audio, hasSave, party }) {
+function panelBody(panel, { audio, slots, party }) {
   if (panel === 'hub') {
     return `<div class="menu-buttons settings-nav">
       <button class="btn big" data-panel="audio">Audio</button>
       <button class="btn big" data-panel="display">Display</button>
+      <button class="btn big" data-panel="gameplay">Gameplay</button>
       <button class="btn big" data-panel="escorts">Escorts</button>
       <button class="btn big" data-panel="save">Save</button>
       <button class="btn big" data-panel="about">About</button>
@@ -83,14 +86,19 @@ function panelBody(panel, { audio, hasSave, party }) {
         <button class="btn small" data-act="shake">Shake: ${prefs.shake ? 'On' : 'Off'}</button>
       </div>
       <div class="settings-row">
-        <span>Pace matching</span>
-        <button class="btn small" data-act="pace">Pace matching: ${prefs.paceMatching ? 'On' : 'Off'}</button>
-      </div>
-      <p class="muted small">When on, recent deaths ease combat and clean runs raise it a little. Payouts are never cut.</p>
-      <div class="settings-row">
         <span>Fullscreen</span>
         <button class="btn small" data-act="fullscreen">${full ? 'Exit fullscreen' : 'Enter fullscreen'}</button>
       </div>
+    </div>`;
+  }
+  if (panel === 'gameplay') {
+    const prefs = loadPrefs();
+    return `<div class="panel settings-panel">
+      <div class="settings-row">
+        <span>Pace matching</span>
+        <button class="btn small" data-act="pace">Pace matching: ${prefs.paceMatching ? 'On' : 'Off'}</button>
+      </div>
+      <p class="muted small">When on, recent deaths ease combat and fast or clean runs raise it a little. Payouts are never cut. The board records whether this run used it.</p>
     </div>`;
   }
   if (panel === 'escorts') {
@@ -102,6 +110,7 @@ function panelBody(panel, { audio, hasSave, party }) {
     const crew = snap.crewHtml
       ? `<ul class="party-crew settings-crew">${snap.crewHtml}</ul>`
       : '';
+    const locked = loadPrefs().showQr;
     const note = snap.ready
       ? 'Scan to join as an escort, or enter the room code on a phone or laptop.'
       : snap.offline || 'Escorts are offline.';
@@ -110,17 +119,33 @@ function panelBody(panel, { audio, hasSave, party }) {
       ${qr}
       ${code}
       ${crew}
+      <div class="settings-row">
+        <span>Corner QR</span>
+        <button class="btn small" data-act="qr-lock">Corner QR: ${locked ? 'Locked on' : 'Off'}</button>
+      </div>
+      <p class="muted small">When locked, the join QR stays in the corner so others can scan it.</p>
     </div>`;
   }
   if (panel === 'save') {
-    return `<div class="panel settings-panel">
-      <p class="muted">${hasSave ? 'A local save is on this device.' : 'No save on this device.'}</p>
-      <button class="btn danger" data-act="delete-save" ${hasSave ? '' : 'disabled'}>Delete save</button>
-      <div class="confirm delete-confirm hidden">
-        <p>Delete your current save? This cannot be undone. Its open Lane Records row will be dropped.</p>
-        <button class="btn danger" data-act="delete-confirm">Delete</button>
-        <button class="btn" data-act="delete-cancel">Cancel</button>
+    const filled = (slots || []).filter((s) => !s.empty);
+    const fmt = (n) => Math.round(n).toLocaleString();
+    const rows = filled.length
+      ? filled
+          .map(
+            (s) => `<div class="settings-row">
+        <span>${escapeHtml(s.callsign)} · ${fmt(s.credits)} cr</span>
+        <button class="btn small danger" data-act="delete-save" data-slot="${s.index}">Delete</button>
       </div>
+      <div class="confirm delete-confirm hidden" data-confirm-slot="${s.index}">
+        <p>Delete ${escapeHtml(s.callsign)}? The open Lane Records row will be dropped.</p>
+        <button class="btn danger" data-act="delete-confirm" data-slot="${s.index}">Delete</button>
+        <button class="btn" data-act="delete-cancel">Cancel</button>
+      </div>`,
+          )
+          .join('')
+      : '<p class="muted">No saves on this device. You can keep up to three.</p>';
+    return `<div class="panel settings-panel">
+      ${rows}
     </div>`;
   }
   if (panel === 'about') {
@@ -163,7 +188,7 @@ function panelBody(panel, { audio, hasSave, party }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared }) {
+function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared, onQrLock }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
     const nav = e.target.closest('[data-panel]');
@@ -197,7 +222,19 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
     if (act === 'pace') {
       const next = !loadPrefs().paceMatching;
       savePrefs({ paceMatching: next });
+      const s = load();
+      if (s) {
+        if (!next) s.paced = false;
+        save(s);
+      }
       e.target.closest('[data-act="pace"]').textContent = `Pace matching: ${next ? 'On' : 'Off'}`;
+      return;
+    }
+    if (act === 'qr-lock') {
+      const next = !loadPrefs().showQr;
+      savePrefs({ showQr: next });
+      e.target.closest('[data-act="qr-lock"]').textContent = `Corner QR: ${next ? 'Locked on' : 'Off'}`;
+      onQrLock?.(next);
       return;
     }
     if (act === 'fullscreen') {
@@ -212,16 +249,19 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       return;
     }
     if (act === 'delete-save') {
-      root.querySelector('.delete-confirm')?.classList.remove('hidden');
+      const slot = e.target.closest('[data-slot]')?.dataset.slot;
+      root.querySelectorAll('.delete-confirm').forEach((el) => el.classList.add('hidden'));
+      root.querySelector(`.delete-confirm[data-confirm-slot="${slot}"]`)?.classList.remove('hidden');
       return;
     }
     if (act === 'delete-cancel') {
-      root.querySelector('.delete-confirm')?.classList.add('hidden');
+      root.querySelectorAll('.delete-confirm').forEach((el) => el.classList.add('hidden'));
       return;
     }
     if (act === 'delete-confirm') {
-      await abandonRun(load());
-      clearSave();
+      const slot = Number(e.target.closest('[data-slot]')?.dataset.slot);
+      await abandonRun(peekSlot(slot));
+      clearSave(slot);
       onSaveCleared?.();
       refreshSave();
     }
