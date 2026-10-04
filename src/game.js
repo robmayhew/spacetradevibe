@@ -1,6 +1,7 @@
 import { generateGalaxy } from './galaxy.js';
 import { SYSTEMS, WEAPON_ORDER } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load } from './state.js';
+import { newState, generateContracts, shipStats, towFee, save, load, recordFlight } from './state.js';
+import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
 import { TravelView } from './views/travel.js';
@@ -253,6 +254,7 @@ export class Game {
     s.weapon = r.weapon;
     s.stats.flights++;
     s.stats.kills += r.kills;
+    recordFlight(s, r);
     let report;
 
     if (r.success) {
@@ -286,9 +288,10 @@ export class Game {
       };
       if (dest.terminus && !s.won) {
         s.won = true;
+        const unlocks = checkAchievements(s, r);
         generateContracts(s, this.galaxy);
         save(s);
-        this.showVictory();
+        this.showVictory(unlocks);
         return;
       }
     } else if (r.retreat) {
@@ -315,12 +318,18 @@ export class Game {
         note: `Your wreck was towed back to ${origin.name}.`,
       };
     }
+    const unlocks = checkAchievements(s, r);
+    if (unlocks.length) {
+      report.unlocks = unlocks;
+      const extra = unlocks.map((u) => `${u.name} — ${u.reward}`).join(' ');
+      report.note = report.note ? `${report.note} ${extra}` : extra;
+    }
     generateContracts(s, this.galaxy);
     save(s);
     this.showStation(report);
   }
 
-  showVictory() {
+  showVictory(unlocks = []) {
     const s = this.state;
     this.screen = 'victory';
     this.app.audio.play('victory');
@@ -347,6 +356,7 @@ export class Game {
           <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
           <div class="r-line"><span>Ships lost × 10,000</span><b class="warn">−${fmt(score.deathPts)}</b></div>
           <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
+          ${unlocks.length ? unlocks.map((u) => `<div class="r-line"><span>${u.name}</span><b class="accent">${u.reward}</b></div>`).join('') : ''}
           ${
             s.cheated
               ? '<p class="muted small">Test run: the dev console was used, so it cannot be posted.</p>'

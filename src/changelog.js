@@ -1,6 +1,14 @@
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.0',
+    notes: [
+      'Achievement hulls in the station hangar, kept on this device',
+      'Flak, Rail Lance, Swarm Darts, and Nova Ring',
+      'Pace matching that eases or tightens combat from recent flights, with a Display toggle',
+    ],
+  },
   {
     version: '0.2.0',
     notes: [

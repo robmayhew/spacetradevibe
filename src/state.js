@@ -1,4 +1,6 @@
-import { SYSTEMS, WEAPONS, GOODS, COST_GROWTH, PAY_GROWTH } from './data.js';
+import { SYSTEMS, SHIPS, WEAPONS, GOODS, COST_GROWTH, PAY_GROWTH } from './data.js';
+import { applyPersistentUnlocks, hasShipUnlock, hasWeaponUnlock } from './achievements.js';
+import { paceMatchingEnabled } from './prefs.js';
 import { routeDifficulty, systemDistance } from './galaxy.js';
 import { shuffle, pick, rand } from './rng.js';
 
@@ -13,7 +15,7 @@ function newRunId() {
 }
 
 export function newState(galaxy) {
-  return {
+  const s = {
     version: 1,
     seed: galaxy.seed,
     runId: newRunId(),
@@ -21,24 +23,36 @@ export function newState(galaxy) {
     credits: 60,
     current: galaxy.start,
     visited: [galaxy.start],
-    upgrades: Object.fromEntries(Object.entries(SYSTEMS).map(([k, s]) => [k, s.start])),
+    upgrades: Object.fromEntries(Object.entries(SYSTEMS).map(([k, sys]) => [k, sys.start])),
+    ship: 'hauler',
     weapons: ['pulse'],
     weapon: 'pulse',
     hull: SYSTEMS.hull.value(1),
     contracts: [],
     won: false,
+    recentFlights: [],
     stats: { deliveries: 0, kills: 0, deaths: 0, earned: 0, bosses: 0, flights: 0 },
   };
+  applyPersistentUnlocks(s);
+  s.hull = shipStats(s).maxHull;
+  return s;
+}
+
+export function hullDef(state) {
+  return SHIPS[state?.ship] || SHIPS.hauler;
 }
 
 export function shipStats(state) {
   const u = state.upgrades;
+  const hull = hullDef(state);
+  const maxShieldBase = SYSTEMS.shield.value(u.shield);
   return {
-    dmgMult: SYSTEMS.core.value(u.core),
-    maxHull: SYSTEMS.hull.value(u.hull),
-    maxShield: SYSTEMS.shield.value(u.shield),
-    speed: SYSTEMS.engine.value(u.engine),
+    dmgMult: SYSTEMS.core.value(u.core) * (hull.dmgMult || 1),
+    maxHull: Math.round(SYSTEMS.hull.value(u.hull) * (hull.hullMult || 1)),
+    maxShield: maxShieldBase ? Math.round(maxShieldBase * (hull.shieldMult || 1)) : 0,
+    speed: SYSTEMS.engine.value(u.engine) * (hull.speedMult || 1),
     cargo: SYSTEMS.cargo.value(u.cargo),
+    fireRate: hull.fireRate || 1,
   };
 }
 
@@ -70,7 +84,7 @@ export function upgradeCost(key, level) {
 }
 
 export function repairCost(state) {
-  const max = SYSTEMS.hull.value(state.upgrades.hull);
+  const max = shipStats(state).maxHull;
   const missing = Math.max(0, max - state.hull) / max;
   return Math.ceil(missing * 50 * Math.pow(PAY_GROWTH, state.upgrades.hull - 1));
 }
@@ -107,10 +121,50 @@ export function hasWeapon(state, id) {
 
 export function buyWeapon(state, id) {
   const w = WEAPONS[id];
-  if (hasWeapon(state, id) || state.credits < w.cost) return false;
+  if (!w || hasWeapon(state, id) || !hasWeaponUnlock(id) || state.credits < w.cost) return false;
   state.credits -= w.cost;
   state.weapons.push(id);
   return true;
+}
+
+export function selectShip(state, id) {
+  if (!SHIPS[id] || !hasShipUnlock(id)) return false;
+  const before = shipStats(state);
+  const full = state.hull >= before.maxHull - 0.5;
+  state.ship = id;
+  const after = shipStats(state);
+  state.hull = full ? after.maxHull : Math.min(Math.max(1, state.hull), after.maxHull);
+  return true;
+}
+
+export function recordFlight(state, result) {
+  const maxHull = shipStats(state).maxHull;
+  const kind = result.success ? 'success' : result.retreat ? 'retreat' : 'death';
+  const hullFrac = kind === 'death' ? 0 : maxHull > 0 ? Math.max(0, Math.min(1, (result.hull ?? 0) / maxHull)) : 1;
+  const recent = Array.isArray(state.recentFlights) ? state.recentFlights : [];
+  state.recentFlights = [...recent, { kind, hullFrac }].slice(-6);
+}
+
+export function pacePressure(state) {
+  if (!paceMatchingEnabled()) return 1;
+  const flights = state.stats?.flights || 0;
+  const recent = state.recentFlights || [];
+  let p = 1;
+  if (recent.length) {
+    let score = 0;
+    for (const f of recent) {
+      if (f.kind === 'death') score -= 1;
+      else if (f.kind === 'retreat') score -= 0.6;
+      else if (f.kind === 'success') {
+        if (f.hullFrac >= 0.6) score += 0.5;
+        if (f.hullFrac < 0.35) score -= 0.4;
+      }
+    }
+    p = 1 + (score / recent.length) * 0.4;
+  }
+  p = Math.max(0.75, Math.min(1.2, p));
+  if (flights < 2) p = Math.min(p, 0.9);
+  return p;
 }
 
 export function buyUpgrade(state, key) {
@@ -139,10 +193,19 @@ export function save(state) {
   }
 }
 
+function migrateSave(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (!SHIPS[s.ship]) s.ship = 'hauler';
+  if (!Array.isArray(s.recentFlights)) s.recentFlights = [];
+  if (!Array.isArray(s.weapons) || !s.weapons.length) s.weapons = ['pulse'];
+  applyPersistentUnlocks(s);
+  return s;
+}
+
 export function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return raw ? migrateSave(JSON.parse(raw)) : null;
   } catch {
     return null;
   }

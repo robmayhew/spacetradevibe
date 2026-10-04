@@ -65,7 +65,7 @@ export function renderMenu(root, {
           <span><kbd>WASD</kbd>/<kbd>Arrows</kbd> move</span>
           <span><kbd>Space</kbd> fire</span>
           <span><kbd>F</kbd> auto-fire</span>
-          <span><kbd>1</kbd>-<kbd>4</kbd> / <kbd>Q</kbd><kbd>E</kbd> weapons</span>
+          <span><kbd>1</kbd>-<kbd>8</kbd> / <kbd>Q</kbd><kbd>E</kbd> weapons</span>
           <span><kbd>Esc</kbd> pause</span>
         </div>
       </div>

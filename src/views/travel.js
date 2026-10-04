@@ -5,7 +5,7 @@ import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH } from '../data.js';
-import { shipStats } from '../state.js';
+import { shipStats, pacePressure } from '../state.js';
 import { shakeEnabled } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
@@ -37,16 +37,17 @@ function basicMat(color) {
 // Plan waves of spawn groups whose total "cost" grows with difficulty and wave index.
 // Types are dealt from a shuffled deck shared across the trip, so every flight
 // sees a mix of all enemy types before any repeats.
-function planWaves(d, count) {
+function planWaves(d, count, pressure = 1) {
   const types = Object.keys(ENEMIES).filter((id) => id !== 'boss');
+  const minHostiles = Math.max(3, Math.round(MIN_HOSTILES_PER_WAVE * pressure));
   let deck = [];
   return Array.from({ length: count }, (_, w) => {
-    const budget = 6 + d * 1.9 + w * 2.5;
+    const budget = (6 + d * 1.9 + w * 2.5) * pressure;
     const groups = [];
     let spent = 0;
     let t = 0.3;
     let hostiles = 0;
-    while (spent < budget || hostiles < MIN_HOSTILES_PER_WAVE) {
+    while (spent < budget || hostiles < minHostiles) {
       if (!deck.length) deck = shuffle([...types]);
       const type = deck.pop();
       // Once the budget is spent we're only topping up hostiles; asteroids don't count.
@@ -71,11 +72,13 @@ export class TravelView {
     this.input = app.input;
     this.onDone = onDone;
     this.d = contract.difficulty;
-    this.hpMult = Math.pow(HP_GROWTH, this.d - 1);
+    const pressure = contract.infinite ? 1 : pacePressure(state);
+    this.pressure = pressure;
+    this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * pressure;
     this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
-    this.payMult = Math.pow(PAY_GROWTH, this.d - 1);
+    this.payMult = Math.pow(PAY_GROWTH, this.d - 1) * (pressure > 1 ? 1 + (pressure - 1) * 0.5 : 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
-    this.fireRate = 1.1 + 0.06 * (this.d - 1);
+    this.fireRate = (1.1 + 0.06 * (this.d - 1)) * pressure;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07080a);
@@ -86,6 +89,7 @@ export class TravelView {
 
     const stats = shipStats(state);
     this.stats = stats;
+    this.shipId = state.ship || 'hauler';
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     this.player = {
       x: 0, y: -62,
@@ -116,7 +120,7 @@ export class TravelView {
 
     const waveCount = isFinal ? 5 : contract.waves;
     this.hasBoss = contract.forceBoss ?? (isFinal || Math.random() < 0.15 + 0.035 * this.d);
-    this.waves = planWaves(this.d, waveCount);
+    this.waves = planWaves(this.d, waveCount, pressure);
     this.waveIndex = -1;
     this.setPhase('intro');
 
@@ -132,7 +136,7 @@ export class TravelView {
   }
 
   buildPlayerMesh() {
-    const ship = createPlayerShip();
+    const ship = createPlayerShip(undefined, { ship: this.shipId });
     const g = ship.group;
     this.flame = ship.flame;
     this.shieldRing = ship.shieldRing;
@@ -476,38 +480,69 @@ export class TravelView {
     this.shieldRing.visible = p.shield > 0.5;
     this.shieldRing.material.opacity = 0.15 + 0.35 * (p.shield / (p.maxShield || 1)) + (p.shieldFlash > 0 ? 0.5 : 0);
     p.shieldFlash = (p.shieldFlash || 0) - dt;
-    if (Math.random() < 0.6) this.particles.emit(p.x, p.y - 3.4, 1, 0xff8833, { speed: 12, angle: -Math.PI / 2, spread: 0.6, life: 0.3 });
+    const flameY = this.flame.position.y;
+    if (Math.random() < 0.6) this.particles.emit(p.x, p.y + flameY - 0.6, 1, 0xff8833, { speed: 12, angle: -Math.PI / 2, spread: 0.6, life: 0.3 });
   }
 
   fire(dt, firing) {
     const p = this.player;
-    const beamOn = firing && p.weapon === 'beam';
+    const w = WEAPONS[p.weapon] || WEAPONS.pulse;
+    const beamOn = firing && w.kind === 'beam';
     this.beamMesh.visible = beamOn;
     this.audio.beam(beamOn);
     if (beamOn) return this.fireBeam(dt);
     if (!firing || p.cooldown > 0) return;
-    const w = WEAPONS[p.weapon];
-    const dmg = w.dmg * this.stats.dmgMult;
-    p.cooldown = 1 / w.rate;
-    switch (p.weapon) {
-      case 'pulse':
-        this.addShot({ kind: 'bolt', x: p.x, y: p.y + 3, vx: 0, vy: 115, dmg, r: 0.9, color: w.color });
-        break;
-      case 'scatter':
-        for (let i = 0; i < w.pellets; i++) {
-          const a = Math.PI / 2 + (i - (w.pellets - 1) / 2) * 0.17;
+    const dmg = (w.dmg || 0) * this.stats.dmgMult;
+    const rate = (w.rate || 1) * (this.stats.fireRate || 1);
+    p.cooldown = 1 / rate;
+    this.spawnWeaponShots(w, dmg);
+    this.audio.play(w.sfx || p.weapon);
+  }
+
+  spawnWeaponShots(w, dmg) {
+    const p = this.player;
+    switch (w.kind) {
+      case 'spread': {
+        const n = w.pellets || 5;
+        for (let i = 0; i < n; i++) {
+          const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.17;
           this.addShot({ kind: 'pellet', x: p.x, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, color: w.color });
         }
         break;
-      case 'seeker':
-        for (const s of [-1, 1]) this.addShot({ kind: 'missile', x: p.x + s * 2.5, y: p.y, vx: s * 25, vy: 25, dmg, r: 1, life: 3.5, color: w.color });
+      }
+      case 'homing': {
+        const n = w.count || 2;
+        for (let i = 0; i < n; i++) {
+          const s = n === 1 ? 0 : (i - (n - 1) / 2);
+          this.addShot({ kind: 'missile', x: p.x + s * 1.6, y: p.y, vx: s * 18, vy: 28, dmg, r: n > 2 ? 0.7 : 1, life: 3.5, color: w.color });
+        }
         break;
+      }
+      case 'burst':
+        this.addShot({
+          kind: 'bolt', x: p.x, y: p.y + 3, vx: 0, vy: 90, dmg, r: 1.1, color: w.color, life: 0.42,
+          split: w.split || 6, splitDmg: (w.splitDmg || 5) * this.stats.dmgMult,
+        });
+        break;
+      case 'pierce':
+        this.addShot({ kind: 'bolt', x: p.x, y: p.y + 3.2, vx: 0, vy: 85, dmg, r: 1.0, color: w.color, pierce: w.pierce || 3, hit: new Set() });
+        break;
+      case 'ring': {
+        const n = w.pellets || 12;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          this.addShot({ kind: 'pellet', x: p.x, y: p.y, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, dmg, r: 0.8, life: 0.55, color: w.color });
+        }
+        break;
+      }
+      default:
+        this.addShot({ kind: 'bolt', x: p.x, y: p.y + 3, vx: 0, vy: 115, dmg, r: 0.9, color: w.color });
     }
-    this.audio.play(p.weapon);
   }
 
   fireBeam(dt) {
     const p = this.player;
+    const w = WEAPONS[p.weapon] || WEAPONS.beam;
     let target = null;
     for (const e of this.enemies) {
       if (e.dead || e.y < p.y || e.y > TOP + 2) continue;
@@ -521,8 +556,8 @@ export class TravelView {
     this.beamMesh.position.set(p.x, (y0 + endY) / 2, 0.2);
     this.beamMesh.scale.set(1 + Math.random() * 0.3, Math.max(0.1, endY - y0), 1);
     if (target) {
-      this.damageEnemy(target, WEAPONS.beam.dps * this.stats.dmgMult * dt, true);
-      if (Math.random() < 0.5) this.particles.emit(p.x, endY, 2, WEAPONS.beam.color, { speed: 25, angle: -Math.PI / 2, spread: 2, life: 0.3 });
+      this.damageEnemy(target, (w.dps || 100) * this.stats.dmgMult * (this.stats.fireRate || 1) * dt, true);
+      if (Math.random() < 0.5) this.particles.emit(p.x, endY, 2, w.color, { speed: 25, angle: -Math.PI / 2, spread: 2, life: 0.3 });
     }
   }
 
@@ -536,6 +571,7 @@ export class TravelView {
     s.mesh = mesh;
     s.age = 0;
     s.sid = this.nextSid++;
+    if (s.pierce && !s.hit) s.hit = new Set();
     this.pShots.push(s);
   }
 
@@ -956,7 +992,10 @@ export class TravelView {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
-      if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) s.dead = true;
+      if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) {
+        if (s.split && !s.dead) this.burstShot(s);
+        s.dead = true;
+      }
     }
     const p = this.player;
     for (const s of this.eShots) {
@@ -996,6 +1035,17 @@ export class TravelView {
     }
   }
 
+  burstShot(s) {
+    if (s.burstDone) return;
+    s.burstDone = true;
+    const n = s.split || 6;
+    const dmg = s.splitDmg || s.dmg * 0.5;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.2;
+      this.addShot({ kind: 'pellet', x: s.x, y: s.y, vx: Math.cos(a) * 72, vy: Math.sin(a) * 72, dmg, r: 0.7, life: 0.35, color: s.color, arm: 0.04 });
+    }
+  }
+
   nearestEnemy(x, y) {
     let best = null;
     let bd = Infinity;
@@ -1013,15 +1063,23 @@ export class TravelView {
   collide() {
     const p = this.player;
     for (const s of this.pShots) {
-      if (s.dead) continue;
+      if (s.dead || (s.arm && s.age < s.arm)) continue;
       for (const e of this.enemies) {
         if (e.dead || e.y > TOP + 2) continue;
+        if (s.hit?.has(e)) continue;
         const rr = e.r + s.r;
         if ((e.x - s.x) ** 2 + (e.y - s.y) ** 2 < rr * rr) {
-          s.dead = true;
           this.damageEnemy(e, s.dmg);
           this.particles.emit(s.x, s.y, 3, s.color, { speed: 15, life: 0.25 });
-          break;
+          if (s.pierce) {
+            s.hit.add(e);
+            s.pierce--;
+            if (s.pierce <= 0) s.dead = true;
+          } else {
+            if (s.split) this.burstShot(s);
+            s.dead = true;
+            break;
+          }
         }
       }
       if (s.dead) continue;
@@ -1030,9 +1088,15 @@ export class TravelView {
         if (h.dead || !h.homing) continue;
         const rr = h.r + s.r;
         if ((h.x - s.x) ** 2 + (h.y - s.y) ** 2 < rr * rr) {
-          s.dead = true;
+          if (s.pierce) {
+            s.pierce--;
+            if (s.pierce <= 0) s.dead = true;
+          } else {
+            if (s.split) this.burstShot(s);
+            s.dead = true;
+          }
           this.shootDown(h);
-          break;
+          if (s.dead) break;
         }
       }
     }

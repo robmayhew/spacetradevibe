@@ -80,6 +80,11 @@ function panelBody(panel, { audio, hasSave }) {
         <button class="btn small" data-act="shake">Shake: ${prefs.shake ? 'On' : 'Off'}</button>
       </div>
       <div class="settings-row">
+        <span>Pace matching</span>
+        <button class="btn small" data-act="pace">Pace matching: ${prefs.paceMatching ? 'On' : 'Off'}</button>
+      </div>
+      <p class="muted small">When on, recent deaths ease combat and clean runs raise it a little. Payouts are never cut.</p>
+      <div class="settings-row">
         <span>Fullscreen</span>
         <button class="btn small" data-act="fullscreen">${full ? 'Exit fullscreen' : 'Enter fullscreen'}</button>
       </div>
@@ -165,6 +170,12 @@ function bind(root, { audio, panel, setPanel, refreshSave, onBack, onSaveCleared
       const next = !loadPrefs().shake;
       savePrefs({ shake: next });
       e.target.closest('[data-act="shake"]').textContent = `Shake: ${next ? 'On' : 'Off'}`;
+      return;
+    }
+    if (act === 'pace') {
+      const next = !loadPrefs().paceMatching;
+      savePrefs({ paceMatching: next });
+      e.target.closest('[data-act="pace"]').textContent = `Pace matching: ${next ? 'On' : 'Off'}`;
       return;
     }
     if (act === 'fullscreen') {

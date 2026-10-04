@@ -179,6 +179,9 @@ kbd { font-family: var(--display); font-size: 11px; border: 1px solid var(--line
 .arrow { color: var(--muted); }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
 .weapon.owned { border-color: rgba(232, 199, 103, 0.4); }
+.upgrade.locked { opacity: 0.72; }
+.unlock-list { margin-top: 8px; }
+.unlock-list p { margin: 2px 0; }
 
 /* Star map */
 .map-area { position: absolute; inset: 0; cursor: grab; touch-action: none; }
@@ -222,8 +225,8 @@ body.has-party.party-qr-hidden .map-info { left: 140px; }
 .hud-tr .route { color: var(--text); font-size: 13px; }
 .hud-tr .route span { color: var(--cyan); }
 .hud-tr .bounty b { color: var(--gold); }
-.hud-bc { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
-.wslot { font-size: 11px; letter-spacing: 0.08em; padding: 8px 12px; border: 1px solid var(--line); border-radius: 3px; background: rgba(2, 3, 10, 0.6); color: var(--muted); white-space: nowrap; }
+.hud-bc { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: min(92vw, 980px); }
+.wslot { font-size: 10px; letter-spacing: 0.08em; padding: 6px 9px; border: 1px solid var(--line); border-radius: 3px; background: rgba(2, 3, 10, 0.6); color: var(--muted); white-space: nowrap; }
 .wslot.active { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 12px rgba(242, 165, 65, 0.4); }
 .wslot.locked { opacity: 0.25; }
 .hud-bl { position: absolute; bottom: 22px; left: 20px; font-family: var(--body); font-size: 13px; color: var(--muted); max-width: 22vw; }

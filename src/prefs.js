@@ -9,6 +9,7 @@ const DEFAULTS = {
   muted: false,
   volume: 1,
   shake: true,
+  paceMatching: true,
   seenVersion: null,
 };
 
@@ -45,6 +46,7 @@ export function loadPrefs() {
     muted: !!merged.muted,
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
     shake: merged.shake !== false,
+    paceMatching: merged.paceMatching !== false,
     seenVersion: typeof merged.seenVersion === 'string' ? merged.seenVersion : null,
   };
 }
@@ -54,6 +56,7 @@ export function savePrefs(partial) {
   next.volume = Math.max(0, Math.min(1, Number(next.volume) || 0));
   next.muted = !!next.muted;
   next.shake = next.shake !== false;
+  next.paceMatching = next.paceMatching !== false;
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(next));
     localStorage.setItem(MUTE_LEGACY, next.muted ? '1' : '0');
@@ -65,6 +68,10 @@ export function savePrefs(partial) {
 
 export function shakeEnabled() {
   return loadPrefs().shake;
+}
+
+export function paceMatchingEnabled() {
+  return loadPrefs().paceMatching;
 }
 
 function hasReturningMarker() {

@@ -104,7 +104,7 @@ export class DockView {
     this.target.assigned = true;
     this.styleAssignedPad();
 
-    const ship = createPlayerShip();
+    const ship = createPlayerShip(undefined, { ship: state.ship || 'hauler' });
     this.ship = ship;
     this.scene.add(ship.group);
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };

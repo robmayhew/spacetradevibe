@@ -1,7 +1,8 @@
-import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER } from '../data.js';
+import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER, SHIPS, SHIP_ORDER } from '../data.js';
 import {
-  shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save,
+  shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save, selectShip,
 } from '../state.js';
+import { hasShipUnlock, hasWeaponUnlock, shipFeel } from '../achievements.js';
 import { routeDifficulty } from '../galaxy.js';
 import { tierCss } from '../views/starmap.js';
 
@@ -66,6 +67,9 @@ export class StationScreen {
         break;
       case 'buy':
         audio.play(buyWeapon(s, id) ? 'buy' : 'deny');
+        break;
+      case 'equip':
+        audio.play(selectShip(s, id) ? 'buy' : 'deny');
         break;
       case 'repair':
         audio.play(repair(s) ? 'buy' : 'deny');
@@ -248,14 +252,33 @@ export class StationScreen {
     const weapons = WEAPON_ORDER.map((id, i) => {
       const w = WEAPONS[id];
       const owned = hasWeapon(s, id);
+      const locked = !hasWeaponUnlock(id);
       return `
-        <div class="upgrade panel weapon ${owned ? 'owned' : ''}">
+        <div class="upgrade panel weapon ${owned ? 'owned' : ''} ${locked ? 'locked' : ''}">
           <div class="u-head"><h3><kbd>${i + 1}</kbd> ${w.name}</h3><span class="swatch" style="background:#${w.color.toString(16).padStart(6, '0')}"></span></div>
           <p class="muted">${w.desc}</p>
           <div class="u-stat">${w.stat}</div>
           ${owned
             ? '<button class="btn" disabled>Installed</button>'
+            : locked
+            ? `<button class="btn" disabled>${w.unlock === 'nova' ? 'Locked · 75 kills' : 'Locked'}</button>`
             : `<button class="btn ${s.credits >= w.cost ? 'primary' : ''}" data-act="buy" data-id="${id}" ${s.credits < w.cost ? 'disabled' : ''}>Buy · ${fmt(w.cost)} cr</button>`}
+        </div>`;
+    }).join('');
+    const hangar = SHIP_ORDER.filter((id) => !SHIPS[id].hidden || hasShipUnlock(id)).map((id) => {
+      const hull = SHIPS[id];
+      const owned = hasShipUnlock(id);
+      const fitted = s.ship === id;
+      return `
+        <div class="upgrade panel hangar ${fitted ? 'owned' : ''} ${owned ? '' : 'locked'}">
+          <div class="u-head"><h3>${hull.name}</h3>${fitted ? '<span class="tag">Fitted</span>' : ''}</div>
+          <p class="muted">${owned ? hull.desc : hull.hint}</p>
+          <div class="u-stat">${owned ? shipFeel(id) : 'Locked'}</div>
+          ${fitted
+            ? '<button class="btn" disabled>Fitted</button>'
+            : owned
+            ? `<button class="btn primary" data-act="equip" data-id="${id}">Fit hull</button>`
+            : `<button class="btn" disabled>${hull.hint}</button>`}
         </div>`;
     }).join('');
     const sum = u.core + u.hull + u.shield + 1;
@@ -269,9 +292,11 @@ export class StationScreen {
           ${rating < 10 ? `<p>Need <b>${needed}</b> more level${needed === 1 ? '' : 's'} across rated systems to reach rating <b>${rating + 1}</b>.</p>` : '<p class="accent">Maximum rating reached.</p>'}
         </div>
       </div>
+      <h2 class="section">Hangar <span class="muted small">Hulls unlock from achievements and stay on this device.</span></h2>
+      <div class="grid">${hangar}</div>
       <h2 class="section">Systems</h2>
       <div class="grid">${sys}</div>
-      <h2 class="section">Armaments <span class="muted small">All weapons are boosted by Weapons Core. Switch in flight with 1-4 or Q/E.</span></h2>
+      <h2 class="section">Armaments <span class="muted small">All weapons are boosted by Weapons Core. Switch in flight with 1-8 or Q/E.</span></h2>
       <div class="grid">${weapons}</div>`;
   }
 
@@ -297,6 +322,9 @@ export class StationScreen {
         <h2>${r.title}</h2>
         ${r.lines.map((l) => `<div class="r-line"><span>${l[0]}</span><b class="${l[2] || ''}">${l[1]}</b></div>`).join('')}
         ${r.note ? `<p class="muted">${r.note}</p>` : ''}
+        ${r.unlocks?.length
+          ? `<div class="unlock-list">${r.unlocks.map((u) => `<p class="accent">${u.name} — ${u.reward}</p>`).join('')}</div>`
+          : ''}
         <button class="btn primary" data-act="close-modal">Continue</button>
       </div>`;
     this.root.appendChild(wrap);
