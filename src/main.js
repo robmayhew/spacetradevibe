@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Input } from './input.js';
 import { Sfx } from './audio.js';
 import { Game } from './game.js';
+import { PadNav } from './ui/padnav.js';
 import { PartyHost } from './party/host.js';
 import { applyMobileLayout, pixelRatioCap, registerServiceWorker, startMobileLayout } from './mobile.js';
 import { TouchPad } from './ui/touchpad.js';
@@ -33,6 +34,7 @@ class App {
 
     this.input = new Input();
     this.pad = new TouchPad(document.getElementById('touch-pad'), this.input);
+    this.padNav = new PadNav(this);
     this.audio = new Sfx();
     this.view = null;
     this.timeScale = 1; // dev console `speed`
@@ -76,8 +78,10 @@ class App {
   }
 
   frame = (now) => {
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000)); // never step backwards
     this.last = now;
+    this.input.poll(); // gamepad
+    this.padNav.update(dt); // gamepad menu navigation (before sub-steps clear presses)
     // Fast-forward runs several sub-steps so collisions don't tunnel; key presses only
     // count in the first one so toggles (pause, weapon switch) don't fire repeatedly.
     const steps = Math.max(1, Math.ceil(this.timeScale));

@@ -1,8 +1,9 @@
-import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER, SHIPS, SHIP_ORDER, ESCORT_BAY, ESCORT_BAY_ORDER, WEAPON_MAX_LEVEL, canMountWeapon } from '../data.js';
+import { SYSTEMS, SYSTEM_ORDER, WEAPONS, WEAPON_ORDER, WEAPON_MODS, SHIPS, SHIP_ORDER, ESCORT_BAY, ESCORT_BAY_ORDER, WEAPON_MAX_LEVEL, canMountWeapon } from '../data.js';
 import {
   shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save, selectShip,
   extraMountSlots, extraMounts, weaponLevel, weaponLevelCost, buyWeaponLevel, setMount, weaponTuneStat,
   escortLevel, escortUpgradeCost, buyEscortUpgrade, pacePressure, formatPace, formatHeat,
+  weaponModLevel, weaponModCost, buyWeaponMod,
 } from '../state.js';
 import { paceMatchingEnabled } from '../prefs.js';
 import { hasShipUnlock, hasWeaponUnlock, shipFeel } from '../achievements.js';
@@ -76,6 +77,9 @@ export class StationScreen {
         break;
       case 'buy':
         audio.play(buyWeapon(s, id) ? 'buy' : 'deny');
+        break;
+      case 'wmod':
+        audio.play(buyWeaponMod(s, id) ? 'buy' : 'deny');
         break;
       case 'gun-up':
         audio.play(buyWeaponLevel(s, id) ? 'buy' : 'deny');
@@ -305,7 +309,7 @@ export class StationScreen {
       : 'Uncharted neighbor';
     return `<h3>${title}</h3>
       <div>${meta}</div>
-      ${named && sys.terminus ? '<div class="accent">Final destination. Deliver here to win.</div>' : ''}
+      ${named && sys.terminus ? '<div class="accent">The KL9 core. Deliver the shutdown code here to win.</div>' : ''}${named && sys.home ? '<div class="accent">Your home world.</div>' : ''}
       ${route}`;
   }
 
@@ -339,7 +343,7 @@ export class StationScreen {
             <span class="payout">${stats.cargo} × ${c.pay} = <b>${fmt(total)} cr</b></span>
           </div>
           <div class="c-danger">${dangerTag(c.difficulty, rating)}${c.difficulty > rating ? `<span class="muted small">Rating ${rating} vs difficulty ${c.difficulty}</span>` : ''}</div>
-          ${dest.terminus ? '<div class="accent small">Final destination. Expect heavy resistance and a capital ship.</div>' : ''}
+          ${dest.terminus ? '<div class="accent small">The KL9 core. Deliver the shutdown code here to win. Expect their heaviest defense and a capital ship.</div>' : ''}
         </button>`;
       })
       .join('');
@@ -403,6 +407,7 @@ export class StationScreen {
             : gcost != null
               ? `<button class="btn ${s.credits >= gcost ? 'primary' : ''}" data-act="gun-up" data-id="${id}" ${s.credits < gcost ? 'disabled' : ''}>Tune · ${fmt(gcost)} cr</button>`
               : '<button class="btn" disabled>Maxed</button>'}
+          ${owned && WEAPON_MODS[id] ? this.weaponMod(id) : ''}
           ${w.kind === 'beam' ? '<p class="muted small">Ion Beam stays on the primary. Extra mounts cannot carry it.</p>' : ''}
           ${isMounted ? '<p class="muted small">Locked off 1–8 while mounted.</p>' : ''}
           ${mountBtns ? `<div class="mount-btns">${mountBtns}</div>` : ''}
@@ -469,6 +474,24 @@ export class StationScreen {
         <div class="stage-copy">${this.inspectCopy(this.inspect || 'sys:core')}</div>
       </aside>
       </div>`;
+  }
+
+  // Special mod row on an installed weapon's card (e.g. Seeker Rapid Recharge).
+  weaponMod(id) {
+    const s = this.state;
+    const u = WEAPON_MODS[id];
+    const lvl = weaponModLevel(s, id);
+    const cost = weaponModCost(id, lvl);
+    const cur = u.format(u.value(lvl));
+    const next = cost != null ? u.format(u.value(lvl + 1)) : null;
+    return `
+      <div class="u-sub">
+        <div class="u-level">${u.name} · Lv ${lvl} ${pips(lvl, u.max)}</div>
+        <div class="u-stat">${cur}${next ? ` <span class="arrow">→</span> <b>${next}</b>` : ' <span class="muted">(max)</span>'}</div>
+      </div>
+      ${cost != null
+        ? `<button class="btn ${s.credits >= cost ? 'primary' : ''}" data-act="wmod" data-id="${id}" ${s.credits < cost ? 'disabled' : ''}>${u.name} · ${fmt(cost)} cr</button>`
+        : '<button class="btn" disabled>Maxed</button>'}`;
   }
 
   renderFooter(stats) {

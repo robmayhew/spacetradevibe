@@ -92,7 +92,7 @@ function rulesHtml() {
   return `<div class="wiki-list">
     <article class="wiki-card">
       <div class="wiki-head"><h3>How a run works</h3></div>
-      <p>Pick a contract, launch, and clear 1–4 waves. Dock, get paid, and spend it on Ship Systems. Fly deeper until you deliver the Founders’ Beacon to the Terminus.</p>
+      <p>Pick a contract, launch, and clear 1–4 waves. Dock, get paid, and spend it on Ship Systems. Fly deeper until you deliver the KL9 Shutdown Code to the Terminus, the heart of the robot army.</p>
     </article>
     <article class="wiki-card">
       <div class="wiki-head"><h3>Ship rating</h3></div>

@@ -4,11 +4,12 @@ import { Particles } from '../fx/particles.js';
 import { solid, rock, flatShape, setFlash, disposeModel, addLights } from '../fx/model.js';
 import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
-import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, weaponLevelMult, weaponRateMult, canMountWeapon, MOUNT_RATE_MULT, MOUNT_DMG_MULT } from '../data.js';
-import { shipStats, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons, recordPace, formatPace, heatMult, heatLevel } from '../state.js';
+import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, DIFFICULTY_ADJUST, WEAPON_MODS, weaponLevelMult, weaponRateMult, canMountWeapon, MOUNT_RATE_MULT, MOUNT_DMG_MULT } from '../data.js';
+import { shipStats, weaponModLevel, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons, recordPace, formatPace, heatMult, heatLevel } from '../state.js';
 import { paceMatchingEnabled } from '../prefs.js';
 import { shakeEnabled } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
+import { WarpStreaks } from '../fx/warp.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
 
 const TOP = 50;
@@ -26,6 +27,9 @@ const circleGeo = new THREE.CircleGeometry(0.7, 10);
 const pelletGeo = new THREE.CircleGeometry(0.45, 8);
 const boltGeo = new THREE.PlaneGeometry(0.45, 2.6);
 const beamGeo = new THREE.PlaneGeometry(1, 1);
+const eyeGeo = new THREE.CircleGeometry(0.35, 12);
+// Over-bright red so bloom picks it up as a glow.
+const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.3, 0.18) });
 const matCache = new Map();
 function basicMat(color) {
   if (!matCache.has(color)) matCache.set(color, new THREE.MeshBasicMaterial({ color }));
@@ -35,6 +39,11 @@ function basicMat(color) {
 // Plan waves of spawn groups whose total "cost" grows with difficulty and wave index.
 // Types are dealt from a shuffled deck shared across the trip, so every flight
 // sees a mix of all enemy types before any repeats.
+// Pellets lose power linearly with distance; they fly at constant speed, so age/life tracks it.
+function shotDamage(s) {
+  return s.falloff ? s.dmg * (1 - s.falloff * Math.min(1, s.age / s.life)) : s.dmg;
+}
+
 function planWaves(d, count, pressure = 1) {
   const types = Object.keys(ENEMIES).filter((id) => id !== 'boss');
   const minHostiles = Math.max(3, Math.round(MIN_HOSTILES_PER_WAVE * pressure));
@@ -79,8 +88,9 @@ export class TravelView {
     this.paceLabel = formatPace(pace, paced);
     this.heat = heatLevel(state);
     if (!contract.infinite) recordPace(state, pace);
-    this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * pressure;
-    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1);
+    const adjust = DIFFICULTY_ADJUST[this.d] ?? 1;
+    this.hpMult = Math.pow(HP_GROWTH, this.d - 1) * pressure * adjust;
+    this.dmgMult = Math.pow(DMG_GROWTH, this.d - 1) * adjust;
     this.payMult = Math.pow(PAY_GROWTH, this.d - 1) * (pace > 1 ? 1 + (pace - 1) * 0.5 : 1);
     this.bulletSpeed = 1 + 0.04 * (this.d - 1);
     this.fireRate = (1.1 + 0.06 * (this.d - 1)) * pressure;
@@ -90,10 +100,12 @@ export class TravelView {
     addLights(this.scene);
     this.camera = new THREE.OrthographicCamera(-50, 50, TOP, BOTTOM, -10, 10);
     this.stars = new Starfield(this.scene, app.pixelRatio);
+    this.warp = new WarpStreaks(this.scene);
     this.particles = new Particles(this.scene, app.pixelRatio);
 
     const stats = shipStats(state);
     this.stats = stats;
+    this.seekerRecharge = WEAPON_MODS.seeker.value(weaponModLevel(state, 'seeker'));
     this.shipId = state.ship || 'hauler';
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     this.primaries = primaryWeapons(state);
@@ -107,9 +119,11 @@ export class TravelView {
       shield: stats.maxShield, maxShield: stats.maxShield,
       invuln: 0, regenDelay: 0, cooldown: 0,
       weapon: startGun,
+      seekerAmmo: WEAPONS.seeker.ammo,
+      seekerReload: 0,
     };
     this.combatMs = 0;
-    this.buildPlayerMesh();
+    this.buildPlayerMesh({ upgrades: state.upgrades, weapons: this.owned });
     this.helpers = new Map();
     this.nextSid = 1;
     this.app.party?.setMode('travel');
@@ -145,14 +159,15 @@ export class TravelView {
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });
-    this.hud.banner(`Departing ${from}`, `${contract.good} bound for ${to}`);
+    this.hud.banner('Entering warp', `${contract.good} bound for ${to}`);
     this.audio.play('launch');
     this.input.captureKeys = true;
     document.activeElement?.blur?.();
   }
 
-  buildPlayerMesh() {
-    const ship = createPlayerShip(undefined, { ship: this.shipId });
+  buildPlayerMesh(loadout) {
+    const ship = createPlayerShip(undefined, { ship: this.shipId, loadout });
+    this.ship = ship;
     const g = ship.group;
     this.flame = ship.flame;
     this.shieldRing = ship.shieldRing;
@@ -197,6 +212,7 @@ export class TravelView {
     this.phaseT += dt;
     if (['banner', 'wave', 'bossWarn', 'boss', 'infinite'].includes(this.phase)) this.combatMs += dt * 1000;
     this.stars.update(dt, this.phase === 'outro' ? 28 + this.phaseT * 70 : 28);
+    this.warp.update(dt, this.phase === 'outro' ? 1 + this.phaseT * 1.5 : 1);
     this.updatePhase(dt);
 
     const controllable = ['banner', 'wave', 'bossWarn', 'boss', 'intro', 'infinite'].includes(this.phase) && !(this.phase === 'intro' && this.phaseT < 1.2);
@@ -217,6 +233,7 @@ export class TravelView {
       hull: this.player.hull, maxHull: this.player.maxHull,
       shield: this.player.shield, maxShield: this.player.maxShield,
       bounty: this.bounty, weapon: this.player.weapon, auto: this.auto,
+      seeker: { ammo: this.player.seekerAmmo, max: WEAPONS.seeker.ammo, reload: this.player.seekerReload, unlimited: this.seekerRecharge <= 0 },
       mounts: this.mounts,
       waveText: this.waveText(),
       boss: boss ? Math.max(0, boss.hp / boss.maxHp) : null,
@@ -249,10 +266,10 @@ export class TravelView {
     }
     if (this.phase === 'boss' || this.phase === 'bossWarn') {
       const escorts = this.enemies.filter((e) => this.isHostile(e) && e.type !== 'boss').length;
-      return `CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
+      return `KL9 CAPITAL SHIP${escorts ? ` · ${escorts} ESCORT${escorts === 1 ? '' : 'S'}` : ''}`;
     }
     if (this.phase === 'outro') return 'DOCKING';
-    if (this.waveIndex < 0) return 'EN ROUTE';
+    if (this.waveIndex < 0) return 'AT WARP';
     const left = this.phase === 'wave' ? ` · ${this.hostilesLeft()} LEFT` : '';
     return `WAVE ${this.waveIndex + 1} / ${this.waves.length}${this.hasBoss ? ' + BOSS' : ''}${left}`;
   }
@@ -318,6 +335,7 @@ export class TravelView {
     this.fireRate = 1.1;
     const stats = shipStats(state);
     this.stats = stats;
+    this.seekerRecharge = WEAPON_MODS.seeker.value(weaponModLevel(state, 'seeker'));
     this.save = state;
     this.owned = WEAPON_ORDER.filter((w) => state.weapons.includes(w));
     this.primaries = primaryWeapons(state);
@@ -374,11 +392,11 @@ export class TravelView {
     if (this.waveIndex < this.waves.length) {
       this.buildSpawnQueue(this.waves[this.waveIndex]);
       this.setPhase('banner');
-      this.hud.banner(`Wave ${this.waveIndex + 1}`, this.waveIndex === this.waves.length - 1 && !this.hasBoss ? 'Final wave' : '');
+      this.hud.banner(`Wave ${this.waveIndex + 1}`, this.waveIndex === 0 ? 'KL9 ambush at warp' : this.waveIndex === this.waves.length - 1 && !this.hasBoss ? 'Final wave' : '');
       this.audio.play('wave');
     } else if (this.hasBoss && !this.bossKilled && this.phase !== 'boss') {
       this.setPhase('bossWarn');
-      this.hud.banner('WARNING', 'Hostile capital ship inbound', 'danger');
+      this.hud.banner('WARNING', 'KL9 capital ship inbound', 'danger');
       this.audio.play('bossWarn');
     } else {
       this.startOutro();
@@ -422,9 +440,7 @@ export class TravelView {
     let mx = 0;
     let my = 0;
     if (controllable) {
-      const m = inp.move();
-      mx = m.x;
-      my = m.y;
+      ({ x: mx, y: my } = inp.move()); // keys, D-pad, or analog stick (length ≤ 1)
       p.x = clamp(p.x + mx * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
       p.y = clamp(p.y + my * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
 
@@ -441,6 +457,14 @@ export class TravelView {
     }
 
     p.cooldown -= dt;
+    if (p.seekerReload > 0) {
+      p.seekerReload -= dt;
+      if (p.seekerReload <= 0) {
+        p.seekerAmmo = WEAPONS.seeker.ammo;
+        this.ship.setSeekerAmmo(p.seekerAmmo);
+        if (p.weapon === 'seeker') this.audio.play('beep');
+      }
+    }
     const firing = controllable && this.phase !== 'intro' && (this.auto || inp.down('Space', 'KeyJ'));
     this.fire(dt, firing);
 
@@ -453,6 +477,8 @@ export class TravelView {
     m.position.set(p.x, p.y, 0);
     m.visible = p.invuln <= 0 || Math.floor(p.invuln * 20) % 2 === 0;
     this.flame.scale.set(1, 0.7 + Math.random() * 0.5 + my * 0.4, 1);
+    this.ship.setDamage(1 - p.hull / p.maxHull);
+    this.ship.update(dt, this.particles, p.x, p.y);
     this.shieldRing.visible = p.shield > 0.5;
     this.shieldRing.material.opacity = 0.15 + 0.35 * (p.shield / (p.maxShield || 1)) + (p.shieldFlash > 0 ? 0.5 : 0);
     p.shieldFlash = (p.shieldFlash || 0) - dt;
@@ -467,25 +493,48 @@ export class TravelView {
     this.beamMesh.visible = beamOn;
     this.audio.beam(beamOn);
     if (beamOn) this.fireBeam(dt);
-    else if (firing && p.cooldown <= 0) {
+    else if (firing && p.cooldown <= 0 && !(w.ammo && p.seekerAmmo <= 0)) {
       const lvl = weaponLevel(this.save, p.weapon);
       const dmg = (w.dmg || 0) * this.stats.dmgMult * weaponLevelMult(lvl);
       const rate = (w.rate || 1) * (this.stats.fireRate || 1) * weaponRateMult(lvl);
       p.cooldown = 1 / rate;
       this.spawnWeaponShots(w, dmg);
       this.audio.play(w.sfx || p.weapon);
+      if (w.ammo) this.useSeekerAmmo(w);
     }
     this.fireMounts(dt);
+  }
+
+  // Seekers fire 3 salvos, then recharge (shorter with Rapid Recharge; none at its top level).
+  useSeekerAmmo(w) {
+    const p = this.player;
+    p.seekerAmmo--;
+    if (p.seekerAmmo <= 0) {
+      if (this.seekerRecharge > 0) p.seekerReload = this.seekerRecharge;
+      else p.seekerAmmo = w.ammo;
+    }
+    this.ship.setSeekerAmmo(p.seekerAmmo);
   }
 
   fireMounts(dt) {
     const combat = this.phase !== 'intro' && this.phase !== 'dead' && this.phase !== 'outro';
     if (!combat) return;
     const state = this.save;
+    this.mountAmmo ??= [];
+    this.mountReload ??= [];
     for (let i = 0; i < this.mounts.length; i++) {
       const id = this.mounts[i];
       const w = WEAPONS[id];
       if (!w || !canMountWeapon(id)) continue;
+      // Mounted launchers obey the same salvo limit as the primary gun.
+      if (w.ammo) {
+        this.mountAmmo[i] ??= w.ammo;
+        if (this.mountReload[i] > 0) {
+          this.mountReload[i] -= dt;
+          if (this.mountReload[i] > 0) continue;
+          this.mountAmmo[i] = w.ammo;
+        }
+      }
       this.mountCd[i] = (this.mountCd[i] || 0) - dt;
       if (this.mountCd[i] > 0) continue;
       const lvl = weaponLevel(state || { weaponLevels: { [id]: 1 } }, id);
@@ -493,6 +542,10 @@ export class TravelView {
       const rate = (w.rate || 1) * (this.stats.fireRate || 1) * weaponRateMult(lvl) * MOUNT_RATE_MULT;
       this.mountCd[i] = 1 / Math.max(0.2, rate);
       this.spawnWeaponShots(w, dmg, i);
+      if (w.ammo && --this.mountAmmo[i] <= 0) {
+        if (this.seekerRecharge > 0) this.mountReload[i] = this.seekerRecharge;
+        else this.mountAmmo[i] = w.ammo;
+      }
     }
   }
 
@@ -506,7 +559,7 @@ export class TravelView {
         const n = w.pellets || 5;
         for (let i = 0; i < n; i++) {
           const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.17;
-          this.addShot({ kind: 'pellet', x: p.x + ox, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, color: w.color });
+          this.addShot({ kind: 'pellet', x: p.x + ox, y: p.y + 2.5, vx: Math.cos(a) * 95, vy: Math.sin(a) * 95, dmg, r: 0.9, life: 0.75, falloff: w.falloff, color: w.color });
         }
         break;
       }
@@ -723,6 +776,11 @@ export class TravelView {
       mesh.scale.setScalar(size);
     } else {
       mesh = solid(type, SHAPES[type], def.color, { glass: GLASS[type] });
+      // KL9 robots: a glowing red sensor eye toward the front (enemy shapes point down).
+      const eye = new THREE.Mesh(eyeGeo, eyeMat);
+      eye.position.set(0, -def.r * 0.3, 0.6);
+      eye.scale.setScalar(Math.max(1.1, def.r * 0.6));
+      mesh.add(eye);
     }
     mesh.position.set(x, y, 0);
     this.scene.add(mesh);
@@ -946,7 +1004,7 @@ export class TravelView {
       this.clearEnemyShots();
       this.shake = 4;
       this.audio.play('bigExplode');
-      this.hud.banner('Capital ship destroyed', `+${Math.round(e.def.bounty * this.payMult)} cr bounty`);
+      this.hud.banner('KL9 capital ship destroyed', `+${Math.round(e.def.bounty * this.payMult)} cr bounty`);
     } else {
       this.particles.explode(e.x, e.y, e.def.color, e.r / 1.8);
       this.shake = Math.max(this.shake, e.r * 0.25);
@@ -992,6 +1050,7 @@ export class TravelView {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.mesh.position.set(s.x, s.y, 0.1);
+      if (s.falloff) s.mesh.scale.setScalar(1 - 0.55 * Math.min(1, s.age / s.life)); // pellets visibly weaken
       if ((s.life && s.age > s.life) || s.y > TOP + 5 || s.y < BOTTOM - 5 || Math.abs(s.x) > this.halfW + 5) {
         if (s.split && !s.dead) this.burstShot(s);
         s.dead = true;
@@ -1069,7 +1128,7 @@ export class TravelView {
         if (s.hit?.has(e)) continue;
         const rr = e.r + s.r;
         if ((e.x - s.x) ** 2 + (e.y - s.y) ** 2 < rr * rr) {
-          this.damageEnemy(e, s.dmg);
+          this.damageEnemy(e, shotDamage(s));
           this.particles.emit(s.x, s.y, 3, s.color, { speed: 15, life: 0.25 });
           if (s.pierce) {
             s.hit.add(e);
@@ -1193,7 +1252,7 @@ export class TravelView {
     this.clearEnemyShots();
     this.beamMesh.visible = false;
     this.audio.beam(false);
-    this.hud.banner('Route clear', `Approaching ${this.toName}`);
+    this.hud.banner('Lane clear', `Dropping out of warp at ${this.toName}`);
     this.outroV = 0;
   }
 
@@ -1232,6 +1291,7 @@ export class TravelView {
     this.audio.beam(false);
     this.hud.destroy();
     this.stars.dispose();
+    this.warp.dispose();
     this.particles.dispose();
     this.scene.traverse((o) => {
       disposeModel(o);

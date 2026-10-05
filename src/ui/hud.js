@@ -28,7 +28,7 @@ export class TravelHUD {
           ${WEAPON_ORDER.map((id, i) => {
             const mounted = (mounts || []).includes(id);
             return `<button type="button" class="wslot ${owned.includes(id) ? '' : 'locked'} ${mounted ? 'mounted' : ''}" data-w="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">
-              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${mounted ? '<span class="mnt">Mounted</span>' : ''}</button>`;
+              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}${mounted ? '<span class="mnt">Mounted</span>' : ''}</button>`;
           }).join('')}
           <div class="mount-row">${(mounts || []).map((id) => `<span class="mount-pip" data-m="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">${WEAPONS[id].name}</span>`).join('')}</div>
         </div>
@@ -78,7 +78,16 @@ export class TravelHUD {
     fn(value);
   }
 
-  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, mounts }) {
+  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, seeker, mounts }) {
+    if (seeker) {
+      const label = seeker.unlimited ? '∞' : seeker.reload > 0 ? `${seeker.reload.toFixed(1)}s` : '▮'.repeat(seeker.ammo) + '▯'.repeat(seeker.max - seeker.ammo);
+      this.set('seeker', label, (v) => {
+        const el = this.root.querySelector('.wslot[data-w="seeker"] .ammo');
+        if (!el) return;
+        el.textContent = v;
+        el.classList.toggle('reloading', seeker.reload > 0);
+      });
+    }
     this.set('hull', Math.ceil(hull), (v) => {
       this.el.hull.style.width = `${(100 * v) / maxHull}%`;
       this.el.hullV.textContent = `${Math.max(0, v)}/${maxHull}`;

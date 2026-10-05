@@ -22,7 +22,7 @@ export function renderMenu(root, {
   root.innerHTML = `
     <div class="menu">
       <h1 class="logo">TXL<span>TRADER</span></h1>
-      <p class="tagline">Haul cargo. Survive the lanes. Reach the Terminus.</p>
+      <p class="tagline">Trade. Upgrade. Carry the shutdown code to the KL9 core and free Mulerebs.</p>
       ${
         showWhatsNew
           ? `<div class="panel whats-new">
@@ -52,9 +52,9 @@ export function renderMenu(root, {
         <h3>How to play</h3>
         <ul>
           <li>Pick a contract at the station, then <b>Launch</b> to haul it to the destination.</li>
-          <li>Survive 1–4 waves of hostiles (sometimes a capital ship) to dock and get paid.</li>
+          <li>The KL9 robot army can only attack you at warp. Survive 1–4 waves of them (sometimes a capital ship) to dock and get paid. Stations are safe.</li>
           <li>Spend credits on upgrades. Routes run from difficulty 1 to 10; flying above your <b>Ship Rating</b> is allowed but deadly.</li>
-          <li>Fly deeper into the galaxy and reach the <b>Terminus</b> to win.</li>
+          <li>Reach the <b>Terminus</b>, the heart of the KL9, and deliver the shutdown code to its core to win.</li>
         </ul>
         <div class="keys">
           <span><kbd>WASD</kbd>/<kbd>Arrows</kbd> move</span>
@@ -62,6 +62,7 @@ export function renderMenu(root, {
           <span><kbd>F</kbd> auto-fire</span>
           <span><kbd>1</kbd>-<kbd>8</kbd> / <kbd>Q</kbd><kbd>E</kbd> weapons</span>
           <span><kbd>Esc</kbd> pause</span>
+          <span>🎮 Gamepad: stick / D-pad move · <kbd>A</kbd>/<kbd>RT</kbd> fire · <kbd>LB</kbd> <kbd>RB</kbd> weapons · <kbd>X</kbd> auto-fire · <kbd>Start</kbd> pause · <kbd>A</kbd>/<kbd>B</kbd> select / back in menus</span>
         </div>
         <div class="touch-howto">
           <span>Stick to move</span>

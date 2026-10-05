@@ -104,7 +104,7 @@ export class DockView {
     this.target.assigned = true;
     this.styleAssignedPad();
 
-    const ship = createPlayerShip(undefined, { ship: state.ship || 'hauler' });
+    const ship = createPlayerShip(undefined, { ship: state.ship || 'hauler', loadout: { upgrades: state.upgrades, weapons: state.weapons } });
     this.ship = ship;
     this.scene.add(ship.group);
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };
@@ -351,7 +351,7 @@ export class DockView {
           this.setPhase('jump');
           this.hint = '';
           this.audio.play('launch');
-          this.hud.banner('Departing', 'Engaging drive…');
+          this.hud.banner('Engaging warp', 'The KL9 hunt at warp. Stay sharp.');
         } else {
           const armTop = this.L.hubY + this.L.armLen + PAD_R;
           this.hint = p.y < armTop ? 'Nose points up · thrust toward the gate' : '';
@@ -410,9 +410,7 @@ export class DockView {
     let ax = 0;
     let ay = 0;
     if (control) {
-      const m = inp.move();
-      ax = m.x;
-      ay = m.y;
+      ({ x: ax, y: ay } = inp.move()); // keys, D-pad, or analog stick (length ≤ 1)
     }
     if (p.attached) {
       if (control && this.mode === 'undock' && (ax || ay)) p.attached = false;
@@ -426,12 +424,9 @@ export class DockView {
       // Thrusters with inertia: the ship never turns, it drifts and must brake.
       const maxV = this.stats.speed * 0.8;
       const accel = maxV * 2.6;
-      const len = Math.hypot(ax, ay);
-      const nx = len > 1 ? ax / len : ax;
-      const ny = len > 1 ? ay / len : ay;
-      p.vx += nx * accel * dt;
-      p.vy += ny * accel * dt;
-      const damp = Math.exp(-(len ? 0.6 : 1.8) * dt);
+      p.vx += ax * accel * dt;
+      p.vy += ay * accel * dt;
+      const damp = Math.exp(-(ax || ay ? 0.6 : 1.8) * dt);
       p.vx *= damp;
       p.vy *= damp;
       const sp = Math.hypot(p.vx, p.vy);
@@ -459,6 +454,8 @@ export class DockView {
     g.position.set(p.x, p.y, 0.5);
     this.ship.flame.visible = ay > 0 || this.phase === 'jump' || this.phase === 'arrive';
     this.ship.flame.scale.set(1, 0.7 + Math.random() * 0.5 + (this.phase === 'jump' ? 1.2 : 0), 1);
+    this.ship.setDamage(1 - p.hull / p.maxHull);
+    this.ship.update(dt, this.particles, p.x, p.y);
 
     // Guide line to the objective
     const pos = this.guide.geometry.attributes.position;

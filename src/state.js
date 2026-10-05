@@ -1,4 +1,4 @@
-import { SYSTEMS, SHIPS, WEAPONS, WEAPON_ORDER, GOODS, COST_GROWTH, PAY_GROWTH, ESCORT_BAY, WEAPON_MAX_LEVEL, canMountWeapon, weaponLevelMult, weaponRateMult } from './data.js';
+import { SYSTEMS, SHIPS, WEAPONS, WEAPON_ORDER, WEAPON_MODS, GOODS, COST_GROWTH, PAY_GROWTH, ESCORT_BAY, WEAPON_MAX_LEVEL, canMountWeapon, weaponLevelMult, weaponRateMult } from './data.js';
 import { applyPersistentUnlocks, hasShipUnlock, hasWeaponUnlock } from './achievements.js';
 import { paceMatchingEnabled, loadPrefs, savePrefs } from './prefs.js';
 import { routeDifficulty, systemDistance } from './galaxy.js';
@@ -115,7 +115,7 @@ export function generateContracts(state, galaxy) {
       const dist = systemDistance(here, dest);
       let good;
       if (dest.terminus) {
-        good = { name: 'Founders’ Beacon', base: 60 };
+        good = { name: 'KL9 Shutdown Code', base: 60 };
       } else {
         good = pick(GOODS.filter((g) => g.tier <= difficulty && g.tier >= difficulty - 2));
       }
@@ -266,6 +266,27 @@ export function weaponTuneStat(id, level) {
 
 export function hasWeapon(state, id) {
   return state.weapons.includes(id);
+}
+
+// Special weapon mods (e.g. Seeker Rapid Recharge), stored apart from the generic weaponLevels.
+export function weaponModLevel(state, id) {
+  return state.weaponMods?.[id] ?? WEAPON_MODS[id].start;
+}
+
+export function weaponModCost(id, level) {
+  const u = WEAPON_MODS[id];
+  if (level >= u.max) return null;
+  return u.costs?.[level + 1] ?? Math.round(u.baseCost * Math.pow(COST_GROWTH, level - u.start));
+}
+
+export function buyWeaponMod(state, id) {
+  if (!hasWeapon(state, id)) return false;
+  const level = weaponModLevel(state, id);
+  const cost = weaponModCost(id, level);
+  if (cost == null || state.credits < cost) return false;
+  state.credits -= cost;
+  state.weaponMods = { ...state.weaponMods, [id]: level + 1 };
+  return true;
 }
 
 export function buyWeapon(state, id) {

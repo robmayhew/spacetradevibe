@@ -2,6 +2,8 @@
 
 # Enemies
 
+Every enemy belongs to the **KL9** robot army and carries a glowing red sensor eye. They can only attack at warp, which is why combat only happens while travelling (see [Story in the Game](../story.md)).
+
 Enemy stats scale with route difficulty (d):
 
 - HP ×1.75^(d−1)
@@ -9,6 +11,8 @@ Enemy stats scale with route difficulty (d):
 - fire rate 1.1 + 0.06×(d−1)
 - bullet speed +4% per level
 - bounties ×1.55^(d−1)
+
+**Level 10 adjustment:** on difficulty-10 routes (including the Terminus run), enemy HP and damage are a further 10% lower than the curves above (`DIFFICULTY_ADJUST` in `src/data.js`). Bounties are unchanged.
 
 The HP and damage rates match the player's upgrade scaling, so upgrades at level N are balanced for difficulty-N routes.
 

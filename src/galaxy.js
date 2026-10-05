@@ -53,6 +53,8 @@ export function generateGalaxy(seed) {
   systems.push({ id: end, name: 'Terminus', x: TIERS * COL_W + 25, y: 0, tier: TIERS, links: [], terminus: true });
 
   const start = systems.filter((s) => s.tier === 1).reduce((a, b) => (b.x < a.x ? b : a)).id;
+  systems[start].name = 'Mulerebs'; // the player's home world (see Story)
+  systems[start].home = true;
 
   // Degree-capped Kruskal spanning tree, then patch connectivity, then add loops.
   const parent = systems.map((_, i) => i);

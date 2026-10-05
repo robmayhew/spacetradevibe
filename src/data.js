@@ -5,6 +5,9 @@
 export const HP_GROWTH = 1.75; // enemy HP per difficulty, and player damage per Weapons Core level
 export const DMG_GROWTH = 1.43; // enemy damage per difficulty, and player hull/shield per level
 export const PAY_GROWTH = 1.55; // payouts per difficulty
+// Per-difficulty fine-tuning of enemy HP and damage on top of the growth curves
+// (1 = unchanged). Rewards are not affected.
+export const DIFFICULTY_ADJUST = { 10: 0.9 }; // level 10 was a bit too hard
 export const COST_GROWTH = 1.6; // upgrade cost per level
 
 export const SYSTEMS = {
@@ -254,15 +257,16 @@ export const WEAPONS = {
   },
   scatter: {
     name: 'Scatter Cannon',
-    desc: 'Short-range five-pellet spread. Great against swarms.',
+    desc: 'Short-range five-pellet spread. Pellets lose power the farther they fly.',
     cost: 450,
     color: 0xffcc33,
     kind: 'spread',
     rate: 2.6,
-    dmg: 6,
+    dmg: 2.3, // per pellet: 5 × 2.3 × 2.6/s ≈ 30 dps point-blank
     pellets: 5,
+    falloff: 0.75, // share of damage lost by maximum range (linear with distance)
     sfx: 'scatter',
-    stat: '78 dps · wide, short range',
+    stat: '30 dps point-blank · weakens with range',
   },
   flak: {
     name: 'Flak Cannon',
@@ -279,15 +283,17 @@ export const WEAPONS = {
   },
   seeker: {
     name: 'Seeker Missiles',
-    desc: 'Twin homing missiles that hunt the nearest target.',
+    desc: 'Twin homing missiles that hunt the nearest target. 3 salvos, then a recharge (5 s; faster with Rapid Recharge).',
     cost: 1600,
     color: 0xff44ff,
     kind: 'homing',
-    rate: 1.25,
-    dmg: 16,
+    rate: 1.7,
+    dmg: 24,
     count: 2,
+    ammo: 3, // salvos before recharging
+    reload: 5, // seconds to recharge all salvos (see WEAPON_MODS.seeker)
     sfx: 'seeker',
-    stat: '40 dps · homing',
+    stat: '82 dps burst · 3 salvos per recharge',
   },
   rail: {
     name: 'Rail Lance',
@@ -338,6 +344,22 @@ export const WEAPONS = {
   },
 };
 export const WEAPON_ORDER = ['pulse', 'scatter', 'flak', 'seeker', 'rail', 'beam', 'swarm', 'nova'];
+
+// Special per-weapon mods, bought on the weapon's card once it's installed (separate from
+// the generic weapon levels above). Level 1 comes with the weapon. Cost = baseCost × COST_GROWTH for each level already bought.
+export const WEAPON_MODS = {
+  seeker: {
+    name: 'Rapid Recharge',
+    desc: 'Each level recharges the 3 salvos faster. The final level removes the delay entirely.',
+    start: 1,
+    max: 6,
+    baseCost: 800,
+    costs: { 6: 50000 }, // price for reaching a level, overriding the ×COST_GROWTH curve
+    // 5 → 4 → 3.2 → 2.6 → 2.0 s, then level 6: no delay at all
+    value: (l) => (l >= 6 ? 0 : Math.round(WEAPONS.seeker.reload * Math.pow(0.8, l - 1) * 10) / 10),
+    format: (v) => (v === 0 ? 'No recharge delay' : `${v.toFixed(1)} s recharge`),
+  },
+};
 
 // hp/contact/bounty are difficulty-1 values; `cost` is the wave-budget cost.
 // fire.speed is the difficulty-1 bullet speed (the ship's base speed is 40).

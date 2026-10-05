@@ -168,9 +168,9 @@ export class Game {
     this.replaceSlot = null;
     this.showStation({
       kind: 'info',
-      title: 'Welcome, Trader',
+      title: 'For Mulerebs',
       lines: [['Callsign', callsign], ['Starting credits', `${this.state.credits} cr`]],
-      note: 'Haul cargo along the lanes of difficulty 1 to earn credits, then upgrade your ship to take on harder routes. The Terminus waits at the far edge of the map.',
+      note: 'You are the chosen one of Mulerebs, long oppressed by the KL9 robot army. Your people have given you a ship with minimal weapons and the code that can shut the KL9 down. Deliver it to their core at the Terminus, on the far edge of the map. The KL9 can only strike at warp, so stations are safe: trade between them, gather technologies, and grow strong enough for the deep lanes.',
     });
   }
 
@@ -387,8 +387,8 @@ export class Game {
     const priorName = s.callsign || ensureCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
-        <h1 class="logo">TERMINUS<span>REACHED</span></h1>
-        <p class="tagline">You carried the Founders' Beacon to the edge of known space. The lanes will remember your name.</p>
+        <h1 class="logo">KL9 CORE<span>SHUT DOWN</span></h1>
+        <p class="tagline">You delivered the shutdown code to the heart of the robot army. The KL9 go dark, and Mulerebs is free.</p>
         <div class="panel stats-panel">
           <div class="r-line"><span>Deliveries</span><b>${s.stats.deliveries}</b></div>
           <div class="r-line"><span>Credits earned</span><b>${fmt(s.stats.earned)} cr</b></div>

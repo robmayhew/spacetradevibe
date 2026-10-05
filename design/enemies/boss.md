@@ -1,8 +1,8 @@
 [← Design index](../../game.md)
 
-# Boss (Capital Ship)
+# Boss (KL9 Capital Ship)
 
-**Boss (capital ship):** 1,100 HP and 33 shot damage at d1, shot speeds 34–60 (scaled like other enemies), 100 cr bounty at d1. It cycles through attack patterns:
+**Boss (KL9 capital ship):** 1,100 HP and 33 shot damage at d1, shot speeds 34–60 (scaled like other enemies), 100 cr bounty at d1. It cycles through attack patterns:
 
 - **Fan:** a spread of shots across the screen.
 - **Aimed:** rapid shots at the player.

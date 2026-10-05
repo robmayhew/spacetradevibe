@@ -471,6 +471,15 @@ body.has-party:not(.party-qr-hidden):has(.station) .st-footer { padding-left: 17
 .dc-line span { color: var(--cyan); }
 .dc-line input { flex: 1; background: none; border: none; outline: none; color: #fff; font: inherit; }
 
+.wslot .ammo { color: var(--gold); letter-spacing: 0.05em; margin-left: 4px; }
+.wslot .ammo.reloading { color: var(--muted); }
+
+/* Gamepad */
+.pad-focus { outline: 2px solid var(--cyan) !important; outline-offset: 3px; box-shadow: 0 0 0 6px rgba(242, 165, 65, 0.18) !important; }
+.pad-toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; transition: all 0.3s; z-index: 60; background: var(--panel-solid); border: 1px solid var(--cyan); color: var(--text); font-family: var(--display); font-size: 13px; letter-spacing: 0.06em; padding: 10px 16px; border-radius: 3px; pointer-events: none; }
+.pad-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.upgrade .u-sub { border-top: 1px dashed var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .touch-howto { display: none; }
 body:not(.mobile) .st-invite,
 body:not(.mobile) .pause-overlay .escort-invite { display: none; }
