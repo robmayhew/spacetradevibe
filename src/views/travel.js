@@ -138,6 +138,10 @@ export class TravelView {
       from, to, difficulty: this.d, owned: this.owned, mounts: this.mounts,
       pace: this.paceLabel,
       heat: this.heat,
+      party: app.party,
+      onWeapon: (id) => {
+        if (this.primaries.includes(id)) this.player.weapon = id;
+      },
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });
@@ -418,11 +422,11 @@ export class TravelView {
     let mx = 0;
     let my = 0;
     if (controllable) {
-      mx = (inp.down('KeyD', 'ArrowRight') ? 1 : 0) - (inp.down('KeyA', 'ArrowLeft') ? 1 : 0);
-      my = (inp.down('KeyW', 'ArrowUp') ? 1 : 0) - (inp.down('KeyS', 'ArrowDown') ? 1 : 0);
-      const len = Math.hypot(mx, my) || 1;
-      p.x = clamp(p.x + (mx / len) * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
-      p.y = clamp(p.y + (my / len) * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
+      const m = inp.move();
+      mx = m.x;
+      my = m.y;
+      p.x = clamp(p.x + mx * this.stats.speed * dt, -this.playHalfW, this.playHalfW);
+      p.y = clamp(p.y + my * this.stats.speed * dt, BOTTOM + 5, TOP - 12);
 
       WEAPON_ORDER.forEach((w, i) => {
         if (inp.hit(`Digit${i + 1}`) && this.primaries.includes(w)) p.weapon = w;

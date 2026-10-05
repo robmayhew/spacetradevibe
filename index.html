@@ -2,10 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#07080a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TXL Trader" />
     <title>TXL Trader</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,6 +24,24 @@
       <div id="hud"></div>
       <div id="ui"></div>
       <div id="party"></div>
+      <div id="touch-pad" class="touch-pad">
+        <div class="touch-stick">
+          <div class="touch-knob"></div>
+        </div>
+        <div class="touch-actions">
+          <button type="button" class="touch-btn" data-tap="KeyE">Wpn</button>
+          <button type="button" class="touch-btn" data-tap="KeyF">Auto</button>
+          <button type="button" class="touch-btn" data-tap="Escape">Pause</button>
+          <button type="button" class="touch-btn touch-fire" data-hold="Space">Fire</button>
+        </div>
+      </div>
+      <div id="rotate-gate" class="rotate-gate" aria-hidden="true">
+        <div>
+          <p class="eyebrow">TXL Trader</p>
+          <h2>Turn your phone sideways</h2>
+          <p class="muted">This game plays in landscape.</p>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

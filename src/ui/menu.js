@@ -63,6 +63,13 @@ export function renderMenu(root, {
           <span><kbd>1</kbd>-<kbd>8</kbd> / <kbd>Q</kbd><kbd>E</kbd> weapons</span>
           <span><kbd>Esc</kbd> pause</span>
         </div>
+        <div class="touch-howto">
+          <span>Stick to move</span>
+          <span>Fire</span>
+          <span>Auto</span>
+          <span>Weapons</span>
+          <span>Pause</span>
+        </div>
       </div>
     </div>`;
   const joinForm = root.querySelector('.join-code');

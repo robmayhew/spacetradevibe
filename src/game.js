@@ -26,6 +26,7 @@ import {
 } from './score.js';
 import { VERSION } from './changelog.js';
 import { shouldShowWhatsNew } from './prefs.js';
+import { setPlayPad } from './mobile.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
 const PRECISION_BONUS = 0.1; // share of cargo pay awarded for docking without bumps
@@ -82,6 +83,7 @@ export class Game {
     this.station?.destroy();
     this.station = null;
     this.app.hud.innerHTML = '';
+    setPlayPad(false);
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
     const slots = listSlots();
@@ -118,6 +120,7 @@ export class Game {
 
   showLeaderboard() {
     this.screen = 'menu';
+    setPlayPad(false);
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
     renderLeaderboard(this.app.ui, { onBack: () => this.showMenu() });
@@ -125,6 +128,7 @@ export class Game {
 
   showSettings(panel = 'hub') {
     this.screen = 'menu';
+    setPlayPad(false);
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
     renderSettings(this.app.ui, {
@@ -227,6 +231,7 @@ export class Game {
     this.screen = 'station';
     this.station?.destroy();
     this.app.hud.innerHTML = '';
+    setPlayPad(false);
     this.station = new StationScreen(this, { report });
     this.pushLiveScore();
   }
@@ -247,6 +252,7 @@ export class Game {
 
   startDock(mode, system, next) {
     this.screen = 'dock';
+    setPlayPad(true);
     this.dock = new DockView(this.app, {
       mode, system, galaxy: this.galaxy, state: this.state, hull: this.flight.hull,
       // Deferred so we don't tear down the view in the middle of its own update.
@@ -262,6 +268,7 @@ export class Game {
 
   startTravel() {
     this.screen = 'travel';
+    setPlayPad(true);
     const { contract, from, to } = this.flight;
     this.travel = new TravelView(this.app, {
       state: this.state,
@@ -370,6 +377,7 @@ export class Game {
   showVictory(unlocks = []) {
     const s = this.state;
     this.screen = 'victory';
+    setPlayPad(false);
     this.app.audio.play('victory');
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);

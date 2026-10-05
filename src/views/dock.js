@@ -121,6 +121,7 @@ export class DockView {
 
     this.hud = new DockHUD(app.hud, {
       mode, station: system.name, pad: this.target.num,
+      party: app.party,
       onResume: () => this.setPaused(false),
     });
     if (mode === 'dock') {
@@ -409,8 +410,9 @@ export class DockView {
     let ax = 0;
     let ay = 0;
     if (control) {
-      ax = (inp.down('KeyD', 'ArrowRight') ? 1 : 0) - (inp.down('KeyA', 'ArrowLeft') ? 1 : 0);
-      ay = (inp.down('KeyW', 'ArrowUp') ? 1 : 0) - (inp.down('KeyS', 'ArrowDown') ? 1 : 0);
+      const m = inp.move();
+      ax = m.x;
+      ay = m.y;
     }
     if (p.attached) {
       if (control && this.mode === 'undock' && (ax || ay)) p.attached = false;
@@ -424,10 +426,12 @@ export class DockView {
       // Thrusters with inertia: the ship never turns, it drifts and must brake.
       const maxV = this.stats.speed * 0.8;
       const accel = maxV * 2.6;
-      const len = Math.hypot(ax, ay) || 1;
-      p.vx += (ax / len) * accel * dt;
-      p.vy += (ay / len) * accel * dt;
-      const damp = Math.exp(-(ax || ay ? 0.6 : 1.8) * dt);
+      const len = Math.hypot(ax, ay);
+      const nx = len > 1 ? ax / len : ax;
+      const ny = len > 1 ? ay / len : ay;
+      p.vx += nx * accel * dt;
+      p.vy += ny * accel * dt;
+      const damp = Math.exp(-(len ? 0.6 : 1.8) * dt);
       p.vx *= damp;
       p.vy *= damp;
       const sp = Math.hypot(p.vx, p.vy);

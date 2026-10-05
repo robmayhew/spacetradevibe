@@ -9,6 +9,7 @@ import { hasShipUnlock, hasWeaponUnlock, shipFeel } from '../achievements.js';
 import { routeDifficulty, scanRange } from '../galaxy.js';
 import { tierCss } from '../views/starmap.js';
 import { startPreviews } from './preview.js';
+import { copyRoomCode, escortInviteHtml } from '../mobile.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
 
@@ -100,11 +101,20 @@ export class StationScreen {
       case 'close-modal':
         el.closest('.modal-wrap').remove();
         return;
+      case 'copy-room':
+        copyRoomCode(this.app.party, el);
+        return;
       case 'fit':
         this.game.starmap.zoomToFit();
         return;
       case 'here':
         this.game.starmap.focus(s.current);
+        return;
+      case 'zoom-in':
+        this.game.starmap.zoomBy(0.8);
+        return;
+      case 'zoom-out':
+        this.game.starmap.zoomBy(1.25);
         return;
       default:
         return;
@@ -171,7 +181,7 @@ export class StationScreen {
       return `<p class="eyebrow">Hull</p><h3>${hull.name}</h3><p class="muted">${owned ? hull.desc : hull.hint}</p>
         <div class="u-stat">${owned ? shipFeel(id) : 'Locked'}</div>`;
     }
-    return `<p class="muted">Hover a card to preview it here.</p>`;
+    return `<p class="muted">${document.body.classList.contains('mobile') ? 'Tap a card to preview it here.' : 'Hover a card to preview it here.'}</p>`;
   }
 
   selectContract(destId) {
@@ -213,6 +223,7 @@ export class StationScreen {
           ${heatLabel ? `<div class="stat"><label>Heat</label><b>${heatLabel}</b></div>` : ''}
         </div>
         <button class="btn ghost small" data-act="menu">Menu</button>
+        ${escortInviteHtml(this.app.party, 'st-invite')}
       </header>
       <nav class="tabs">
         ${[['contracts', 'Contracts'], ['ship', 'Ship Systems'], ['map', 'Star Map']]
@@ -258,11 +269,20 @@ export class StationScreen {
         <div class="legend-row">${Array.from({ length: 10 }, (_, i) => `<span style="background:${tierCss(i + 1)}">${i + 1}</span>`).join('')}</div>
         <div class="muted small">Bright = visited · Dim = scanned · Hidden = uncharted</div>
         <div class="muted small">Lane Scanner · ${scanRange(this.state)} jumps · Ring = contract, colored by danger</div>
-        <div class="legend-actions"><button class="btn small" data-act="here">Center on me</button><button class="btn small" data-act="fit">Show all</button></div>
+        <div class="legend-actions">
+          <button class="btn small" data-act="here">Center on me</button>
+          <button class="btn small" data-act="fit">Show all</button>
+          <button class="btn small map-zoom" data-act="zoom-out" aria-label="Zoom out">−</button>
+          <button class="btn small map-zoom" data-act="zoom-in" aria-label="Zoom in">+</button>
+        </div>
       </div>`;
   }
 
   mapHint() {
+    const mobile = document.body.classList.contains('mobile');
+    if (mobile) {
+      return '<div class="muted">Drag to pan. Use +/− to zoom. Tap a ringed system to select its contract.</div>';
+    }
     return '<div class="muted">Drag to pan, scroll to zoom. Only charted lanes are drawn. Hover a neighbor for details; click a ringed system to select its contract.</div>';
   }
 
