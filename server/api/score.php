@@ -38,7 +38,14 @@ if ($score < -10000000 || $score >= 50000000) {
     json_error(400, 'Invalid score.');
 }
 
-$status = (($body['status'] ?? 'done') === 'live') ? 'live' : 'done';
+$rawStatus = (string) ($body['status'] ?? 'done');
+if ($rawStatus === 'live') {
+    $status = 'live';
+} elseif ($rawStatus === 'void') {
+    $status = 'void';
+} else {
+    $status = 'done';
+}
 $timeMs = $int('time_ms', 7 * 24 * 60 * 60 * 1000);
 if ($status === 'done' && $timeMs < 3 * 60 * 1000) {
     json_error(400, 'Runs under 3 minutes are not posted.');
@@ -50,30 +57,56 @@ $bosses = $int('bosses', 1000);
 $deaths = $int('deaths', 1000);
 $deliveries = $int('deliveries', 10000);
 $seed = isset($body['seed']) && is_numeric($body['seed']) ? (int) $body['seed'] : 0;
+$paced = 1;
+if (array_key_exists('paced', $body)) {
+    $rawPace = $body['paced'];
+    $paced = ($rawPace === false || $rawPace === 0 || $rawPace === '0' || $rawPace === 'false') ? 0 : 1;
+}
+$credits = 0;
+if (isset($body['credits']) && is_numeric($body['credits'])) {
+    $credits = (int) $body['credits'];
+    if ($credits < 0 || $credits > 49999999) {
+        json_error(400, 'Invalid credits.');
+    }
+}
+$pace = 100;
+if (isset($body['pace']) && is_numeric($body['pace'])) {
+    $pace = (int) $body['pace'];
+    if ($pace < 50 || $pace > 200) {
+        json_error(400, 'Invalid pace.');
+    }
+}
+$season = board_season($body['season'] ?? 'beta');
 
-$expected = $earned + $kills * 50 + $bosses * 2500 - $deaths * 10000;
+$expected = $earned + $kills * 50 + $bosses * 2500 - $deaths * 1000;
 if ($score !== $expected) {
     json_error(400, 'Invalid score.');
 }
 
 $pdo = db();
+ensure_runs_board($pdo);
 $st = $pdo->prepare('SELECT status, score, time_ms, UNIX_TIMESTAMP(updated_at) AS updated_unix FROM runs WHERE run_id = ?');
 $st->execute([$runId]);
 $prev = $st->fetch() ?: null;
+$prevStatus = $prev['status'] ?? '';
 
-if ($prev && ($prev['status'] ?? '') === 'done' && $status === 'live') {
+if ($prev && $prevStatus === 'done' && $status === 'live') {
     json_error(409, 'This run has already arrived.');
 }
 
-$existingLive = $prev && ($prev['status'] ?? '') === 'live';
+if ($prev && ($prevStatus === 'void' || ($prevStatus === 'done' && $status === 'void'))) {
+        json_out(run_ranks($pdo, (int) $prev['score'], (int) $prev['time_ms'], $season));
+}
+
+$existingLive = $prev && $prevStatus === 'live';
 if ($status === 'live' && $existingLive) {
     $updated = (int) ($prev['updated_unix'] ?? 0);
     if ($updated && (time() - $updated) < 30) {
-        json_out(run_ranks($pdo, (int) $prev['score'], (int) $prev['time_ms']));
+        json_out(run_ranks($pdo, (int) $prev['score'], (int) $prev['time_ms'], $season));
     }
 }
 
-$needRate = $status === 'done' || !$prev;
+$needRate = $status === 'done' || (!$prev && $status !== 'void');
 if ($needRate) {
     $ip = client_ip();
     $pdo->prepare('DELETE FROM rate_hits WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)')->execute();
@@ -86,8 +119,8 @@ if ($needRate) {
 }
 
 $pdo->prepare(
-    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        callsign = VALUES(callsign),
        score = VALUES(score),
@@ -98,21 +131,30 @@ $pdo->prepare(
        deaths = VALUES(deaths),
        deliveries = VALUES(deliveries),
        seed = VALUES(seed),
-       status = IF(status = \'done\', \'done\', VALUES(status)),
+       paced = VALUES(paced),
+       credits = VALUES(credits),
+       pace = VALUES(pace),
+       season = VALUES(season),
+       status = CASE
+         WHEN status = \'done\' THEN \'done\'
+         WHEN status = \'void\' THEN \'void\'
+         ELSE VALUES(status)
+       END,
        updated_at = NOW()'
-)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed, $status]);
+)->execute([$runId, $callsign, $score, $timeMs, $earned, $kills, $bosses, $deaths, $deliveries, $seed, $status, $paced, $credits, $pace, $season]);
 
-json_out(run_ranks($pdo, $score, $timeMs));
+json_out(run_ranks($pdo, $score, $timeMs, $season));
 
-function run_ranks(PDO $pdo, int $score, int $timeMs): array {
+function run_ranks(PDO $pdo, int $score, int $timeMs, string $season = 'beta'): array {
     $rankScore = $pdo->prepare(
         'SELECT COUNT(*) FROM runs
-         WHERE (status = \'done\' OR (status = \'live\' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
+         WHERE season = ?
+           AND (status = \'done\' OR (status = \'live\' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
            AND (score > ? OR (score = ? AND time_ms < ?))'
     );
-    $rankScore->execute([$score, $score, $timeMs]);
-    $rankTime = $pdo->prepare('SELECT COUNT(*) FROM runs WHERE status = \'done\' AND (time_ms < ? OR (time_ms = ? AND score > ?))');
-    $rankTime->execute([$timeMs, $timeMs, $score]);
+    $rankScore->execute([$season, $score, $score, $timeMs]);
+    $rankTime = $pdo->prepare('SELECT COUNT(*) FROM runs WHERE season = ? AND status = \'done\' AND (time_ms < ? OR (time_ms = ? AND score > ?))');
+    $rankTime->execute([$season, $timeMs, $timeMs, $score]);
     return [
         'ok' => true,
         'rank_score' => (int) $rankScore->fetchColumn() + 1,

@@ -32,4 +32,4 @@ Once Seeker Missiles are installed, their card in Ship Systems offers **Rapid Re
 | 5 | 2.0 s | 3,277 |
 | 6 (max): **No Recharge** | none: the pods refill as the third salvo fires, so Seekers fire non-stop (HUD shows ∞) | 50,000 |
 
-Levels 2–5 cost ×1.6 per level like other upgrades; level 6 is priced far above the curve (it would otherwise be 5,243). At level 5, sustained damage rises from about 23 to about 45 DPS (3 salvos of 48 damage every ~3.2 s instead of every ~6.2 s); at level 6 it's the full 82 DPS, continuously. Tuning lives in `WEAPON_UPGRADES` in `src/data.js`; other weapons can get upgrades the same way.
+Levels 2–5 cost ×1.6 per level like other upgrades; level 6 is priced far above the curve (it would otherwise be 5,243). At level 5, sustained damage rises from about 23 to about 45 DPS (3 salvos of 48 damage every ~3.2 s instead of every ~6.2 s); at level 6 it's the full 82 DPS, continuously. Tuning lives in `WEAPON_MODS` in `src/data.js` (separate from the generic weapon **Tune** levels); other weapons can get mods the same way.

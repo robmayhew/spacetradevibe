@@ -8,6 +8,7 @@ import { createPlayerShip } from '../fx/ship.js';
 import { textSprite } from '../fx/text.js';
 import { tierColor } from './starmap.js';
 import { shipStats } from '../state.js';
+import { shakeEnabled } from '../prefs.js';
 import { DockHUD } from '../ui/dockhud.js';
 import { RNG, rand, clamp, pick, weightedPick } from '../rng.js';
 
@@ -103,7 +104,7 @@ export class DockView {
     this.target.assigned = true;
     this.styleAssignedPad();
 
-    const ship = createPlayerShip(undefined, { loadout: { upgrades: state.upgrades, weapons: state.weapons } });
+    const ship = createPlayerShip(undefined, { ship: state.ship || 'hauler', loadout: { upgrades: state.upgrades, weapons: state.weapons } });
     this.ship = ship;
     this.scene.add(ship.group);
     this.player = { x: 0, y: -58, vx: 0, vy: 0, hull: hull, maxHull: this.stats.maxHull, attached: false };
@@ -324,7 +325,8 @@ export class DockView {
 
     this.bumpCd -= dt;
     this.shake *= Math.exp(-8 * dt);
-    this.camera.position.set((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake, 0);
+    const shake = shakeEnabled() ? this.shake : 0;
+    this.camera.position.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, 0);
     this.hud.update({ hull: this.player.hull, maxHull: this.player.maxHull, time: this.time, bumps: this.bumps, hint: this.hint });
   }
 
@@ -338,6 +340,7 @@ export class DockView {
         break;
       }
       case 'clearance':
+        this.hint = 'Nose points up · thrust toward the gate';
         if (this.phaseT > 1.2) this.setPhase('fly');
         break;
       case 'fly':
@@ -348,6 +351,9 @@ export class DockView {
           this.hint = '';
           this.audio.play('launch');
           this.hud.banner('Engaging warp', 'The KL9 hunt at warp. Stay sharp.');
+        } else {
+          const armTop = this.L.hubY + this.L.armLen + PAD_R;
+          this.hint = p.y < armTop ? 'Nose points up · thrust toward the gate' : '';
         }
         break;
       case 'docked':
@@ -453,7 +459,7 @@ export class DockView {
     // Guide line to the objective
     const pos = this.guide.geometry.attributes.position;
     const tgt = this.mode === 'dock' ? this.padWorld(this.target) : { x: this.L.gateX, y: 46 };
-    const showGuide = this.phase === 'fly' && !p.attached;
+    const showGuide = this.mode === 'undock' ? this.phase === 'clearance' || this.phase === 'fly' : this.phase === 'fly' && !p.attached;
     this.guide.visible = showGuide;
     if (showGuide) {
       pos.setXYZ(0, p.x, p.y, 0.1);

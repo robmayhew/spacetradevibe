@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { solid } from './model.js';
 import { SHAPES, GLASS } from './shapes.js';
 import { RNG } from '../rng.js';
+import { SHIPS } from '../data.js';
 import { ESCORT_COLOR_HEX } from '../party/colors.js';
 
 export const PLAYER_COLOR = 0x8a98a8;
@@ -42,6 +43,30 @@ function glowDot(at, color, size = 1, z = 0.6) {
   return m;
 }
 
+function hullParts(shipId) {
+  const def = SHIPS[shipId] || SHIPS.hauler;
+  const shape = def.shape || 'player';
+  return {
+    def,
+    shape,
+    pts: SHAPES[shape] || SHAPES.player,
+    glass: GLASS[shape] || GLASS.player,
+  };
+}
+
+// Part and damage spots are laid out on the original hull (x ±3.2, y -3.2…4).
+// fitTo() maps them onto another hull by its own width and length.
+function fitTo(pts) {
+  const xs = pts.map(([x]) => Math.abs(x));
+  const ys = pts.map(([, y]) => y);
+  const half = Math.max(...xs);
+  const top = Math.max(...ys);
+  const bottom = Math.min(...ys);
+  const sx = half / 3.2;
+  const sy = (top - bottom) / 7.2;
+  return ([x, y]) => [x * sx, bottom + (y + 3.2) * sy];
+}
+
 const scorchGeos = SCORCH_SPOTS.map((_, i) => {
   const rng = new RNG(77 + i);
   const n = 7;
@@ -53,14 +78,18 @@ const scorchGeos = SCORCH_SPOTS.map((_, i) => {
   return new THREE.ShapeGeometry(new THREE.Shape(pts));
 });
 
-// The player's ship. With a `loadout` ({ upgrades, weapons }) it shows what's installed;
-// without one (escorts, menu) it's the stock hull.
-export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 1, loadout = null } = {}) {
+// The player's ship: the chosen hull (`ship`), plus — with a `loadout` ({ upgrades, weapons }) —
+// what's installed on it. Without a loadout (escorts, menu) it's the bare hull.
+export function createPlayerShip(color, { shield = true, scale = 1, ship = 'hauler', loadout = null } = {}) {
+  const { def, shape, pts, glass } = hullParts(ship);
+  const col = color ?? def.color ?? PLAYER_COLOR;
+  const at = fitTo(pts);
   const group = new THREE.Group();
-  const hull = solid('player', SHAPES.player, color, { depth: 1, glass: GLASS.player });
+  const hull = solid(shape, pts, col, { depth: 1, glass });
   group.add(hull);
   const hullMat = hull.userData.model.mats[0];
-  const baseColor = new THREE.Color(color);
+  const baseColor = new THREE.Color(col);
+  const flameY = def.flameY ?? -2.8;
   const u = loadout?.upgrades ?? {};
   const weapons = loadout?.weapons ?? [];
 
@@ -68,13 +97,13 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
   const engine = u.engine ?? 1;
   const nozzleXs = engine >= 5 ? [-0.8, 0, 0.8] : engine >= 3 ? [-0.6, 0.6] : [0];
   const flame = new THREE.Group();
-  flame.position.set(0, -3.0, 0.3);
+  flame.position.set(0, flameY - 0.2, 0.3);
   const flameMat = new THREE.MeshBasicMaterial({ color: engine >= 5 ? 0x9fd0ff : 0xff9933, transparent: true, opacity: 0.9 });
   const flameSize = (nozzleXs.length > 1 ? 0.65 : 1) * (0.85 + 0.06 * engine);
   for (const x of nozzleXs) {
-    if (loadout) group.add(part('nozzle', [x, -2.55], 0x4a4f57, { depth: 0.25, z: 0.25 }));
+    if (loadout) group.add(part('nozzle', [at([x, 0])[0], flameY + 0.25], 0x4a4f57, { depth: 0.25, z: 0.25 }));
     const f = new THREE.Mesh(flameGeo, flameMat);
-    f.position.x = x;
+    f.position.x = at([x, 0])[0];
     f.scale.setScalar(flameSize);
     flame.add(f);
   }
@@ -84,12 +113,14 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
     // Hull plating: armor plates at levels 3, 5, 7, 9.
     const plates = Math.min(4, Math.floor(((u.hull ?? 1) - 1) / 2));
     for (let i = 0; i < plates; i++) {
-      for (const s of [-1, 1]) group.add(part('plate', [PLATE_SPOTS[i][0] * s, PLATE_SPOTS[i][1]], 0xa9b3bf));
+      for (const s of [-1, 1]) group.add(part('plate', at([PLATE_SPOTS[i][0] * s, PLATE_SPOTS[i][1]]), 0xa9b3bf));
     }
     // Shields: wingtip emitters, brighter with level (over 1.0 so bloom makes them glow).
     if ((u.shield ?? 0) > 0) {
       const c = new THREE.Color(0.35, 0.66, 1).multiplyScalar(0.6 + 0.12 * u.shield);
-      for (const s of [-1, 1]) group.add(glowDot([3.0 * s, -2.9], c, 0.8 + 0.04 * u.shield));
+      // On the hull's actual wingtips.
+      const tip = pts.reduce((a, b) => (Math.abs(b[0]) > Math.abs(a[0]) ? b : a));
+      for (const s of [-1, 1]) group.add(glowDot([Math.abs(tip[0]) * 0.92 * s, tip[1]], c, 0.8 + 0.04 * u.shield));
     }
     // Weapons Core: a power line down the spine.
     if ((u.core ?? 1) >= 2) {
@@ -97,25 +128,26 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
         new THREE.PlaneGeometry(0.2, 2.0),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.62, 0.22).multiplyScalar(0.3 + 0.17 * u.core) }),
       );
-      spine.position.set(0, -1.0, 0.32);
+      spine.position.set(0, at([0, -1.0])[1], 0.32);
       group.add(spine);
     }
     // Cargo Hold: up to four pods behind the canopy.
     const pods = Math.min(4, Math.floor((u.cargo ?? 1) / 2.5));
-    for (let i = 0; i < pods; i++) group.add(part('pod', POD_SPOTS[i], 0x8a6a3e, { depth: 0.45 }));
-    // Weapon mounts.
-    group.add(part('barrel', [0, 4.1], 0x3b3f45));
-    group.add(glowDot([0, 4.7], 0x33ffee, 0.5));
+    for (let i = 0; i < pods; i++) group.add(part('pod', at(POD_SPOTS[i]), 0x8a6a3e, { depth: 0.45 }));
+    // Weapon mounts. The nose gun sits on the hull's tip.
+    const nose = Math.max(...pts.map(([, y]) => y));
+    group.add(part('barrel', [0, nose + 0.1], 0x3b3f45));
+    group.add(glowDot([0, nose + 0.7], 0x33ffee, 0.5));
     if (weapons.includes('scatter')) {
       for (const s of [-1, 1]) {
-        group.add(part('stub', [1.25 * s, 1.3], 0x6b5a3a));
-        group.add(glowDot([1.25 * s, 1.85], 0xffcc33, 0.5));
+        group.add(part('stub', at([1.25 * s, 1.3]), 0x6b5a3a));
+        group.add(glowDot(at([1.25 * s, 1.85]), 0xffcc33, 0.5));
       }
     }
     if (weapons.includes('beam')) {
       for (const s of [-1, 1]) {
-        group.add(part('rail', [0.7 * s, 2.2], 0x4b4f6e));
-        group.add(glowDot([0.7 * s, 3.15], new THREE.Color(0.9, 1.05, 1.8), 0.45));
+        group.add(part('rail', at([0.7 * s, 2.2]), 0x4b4f6e));
+        group.add(glowDot(at([0.7 * s, 3.15]), new THREE.Color(0.9, 1.05, 1.8), 0.45));
       }
     }
   }
@@ -125,11 +157,12 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
   if (weapons.includes('seeker')) {
     const tipMat = new THREE.MeshBasicMaterial({ color: 0xff44ff });
     for (const s of [-1, 1]) {
-      group.add(part('launcher', [2.3 * s, -1.0], 0x5a4a5e));
+      const [lx, ly] = at([2.3 * s, -1.0]);
+      group.add(part('launcher', [lx, ly], 0x5a4a5e));
       seekerTips.push(
         [-0.25, 0, 0.25].map((dx) => {
           const t = new THREE.Mesh(missileTipGeo, tipMat);
-          t.position.set(2.3 * s + dx, -0.2, 0.65);
+          t.position.set(lx + dx, ly + 0.8, 0.65);
           group.add(t);
           return t;
         }),
@@ -139,16 +172,18 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
 
   // Battle damage: scorch marks, a wing fire and darkened paint.
   const scorchMat = new THREE.MeshBasicMaterial({ color: 0x120e0a, transparent: true, opacity: 0.8, depthWrite: false });
-  const scorches = SCORCH_SPOTS.map(([x, y, at], i) => {
+  const scorches = SCORCH_SPOTS.map(([x, y, showAt], i) => {
     const m = new THREE.Mesh(scorchGeos[i], scorchMat);
-    m.position.set(x, y, 0.68); // over the plating and mounts, so damage shows on everything
+    const [fx, fy] = at([x, y]);
+    m.position.set(fx, fy, 0.68); // over the plating and mounts, so damage shows on everything
     m.rotation.z = i * 1.3;
     m.visible = false;
-    m.userData.at = at;
+    m.userData.at = showAt;
     group.add(m);
     return m;
   });
-  const fire = glowDot(FIRE_SPOT, new THREE.Color(2.2, 0.9, 0.25), 1.3, 0.7);
+  const fireAt = at(FIRE_SPOT);
+  const fire = glowDot(fireAt, new THREE.Color(2.2, 0.9, 0.25), 1.3, 0.7);
   fire.material.transparent = true;
   fire.visible = false;
   group.add(fire);
@@ -170,6 +205,7 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
     group,
     flame,
     shieldRing,
+    ship,
     // 0 = pristine, 1 = wrecked.
     setDamage(d) {
       d = Math.max(0, Math.min(1, d));
@@ -192,11 +228,11 @@ export function createPlayerShip(color = PLAYER_COLOR, { shield = true, scale = 
       if (!particles || damage < 0.25) return;
       const s = group.scale.x;
       if (Math.random() < damage * 0.5) {
-        const [sx, sy] = SCORCH_SPOTS[Math.floor(Math.random() * SCORCH_SPOTS.length)];
+        const [sx, sy] = at(SCORCH_SPOTS[Math.floor(Math.random() * SCORCH_SPOTS.length)]);
         particles.emit(x + sx * s, y + sy * s, 1, Math.random() < 0.5 ? 0xffd27a : 0xff7a2a, { speed: 14, life: 0.35, drag: 4 });
       }
       if (damage >= 0.5 && Math.random() < 0.6) {
-        particles.emit(x + FIRE_SPOT[0] * s, y + FIRE_SPOT[1] * s, 1, 0x8a5a3a, { speed: 6, life: 0.9, angle: -Math.PI / 2, spread: 0.7, drag: 1 });
+        particles.emit(x + fireAt[0] * s, y + fireAt[1] * s, 1, 0x8a5a3a, { speed: 6, life: 0.9, angle: -Math.PI / 2, spread: 0.7, drag: 1 });
       }
     },
   };

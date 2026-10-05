@@ -2,7 +2,6 @@ import './style.css';
 import { CALLSIGN_RE, ensureCallsign, saveCallsign } from './score.js';
 import { partyPost } from './party/api.js';
 import { escortHex } from './party/colors.js';
-import { EscortArena } from './party/screen.js';
 
 let room = String(new URLSearchParams(location.search).get('room') || '').toUpperCase();
 const $ = (s) => document.querySelector(s);
@@ -10,14 +9,18 @@ const statusEl = $('.status');
 const form = $('.join-form');
 const controls = $('.controls');
 const hullMeter = $('.hull-meter');
-const hullFill = $('.bar.hull span');
-const hullV = $('.hull-v');
 const stick = $('#stick');
 const knob = stick.querySelector('.knob');
 const fireBtn = $('#fire');
 const chip = $('.ship-chip');
 const keysHint = $('.keys-hint');
-const arenaEl = $('#arena');
+const bridge = $('#bridge');
+const shipHull = $('.ship-hull');
+const shipFlame = $('.ship-flame');
+const shipGlow = $('.ship-glow');
+const shipName = $('.ship-name');
+const waveLine = $('.wave-line');
+const routeLine = $('.route-line');
 
 const KEY_AXIS = {
   KeyW: [0, 1],
@@ -36,11 +39,11 @@ const keys = new Set();
 let session;
 let pollTimer = 0;
 let inputTimer = 0;
-let arena = null;
-let useScreen = false;
+let useKeys = false;
 let inputBusy = false;
+let keysBound = false;
 
-function prefersScreen() {
+function prefersKeys() {
   return window.matchMedia('(pointer: fine)').matches && window.innerWidth >= 900;
 }
 
@@ -48,11 +51,19 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+function setMeter(root, cur, max) {
+  const fill = root.querySelector('.bar span');
+  const val = root.querySelector('b');
+  const h = Math.max(0, Math.ceil(cur));
+  const m = Math.max(0, Math.ceil(max));
+  fill.style.width = `${m ? (100 * h) / m : 0}%`;
+  fill.classList.toggle('low', m > 0 && h / m < 0.35);
+  val.textContent = `${h}/${m}`;
+}
+
 function setHull(hull, maxHull) {
   hullMeter.classList.remove('hidden');
-  const h = Math.max(0, Math.ceil(hull));
-  hullFill.style.width = `${maxHull ? (100 * h) / maxHull : 0}%`;
-  hullV.textContent = `${h}/${maxHull}`;
+  setMeter(hullMeter, hull, maxHull);
 }
 
 function paintShip(color) {
@@ -63,10 +74,14 @@ function paintShip(color) {
   knob.style.background = hex;
   knob.style.borderColor = hex;
   knob.style.boxShadow = `0 0 14px ${hex}`;
+  shipHull.style.fill = hex;
+  shipFlame.style.fill = '#ff9933';
+  shipGlow.style.background = hex;
+  shipName.textContent = session?.callsign || 'Escort';
 }
 
 function applyPadFromKeys() {
-  if (!useScreen) return;
+  if (!useKeys) return;
   let mx = 0;
   let my = 0;
   for (const code of keys) {
@@ -79,10 +94,11 @@ function applyPadFromKeys() {
   pad.mx = mx ? mx / len : 0;
   pad.my = my ? my / len : 0;
   pad.fire = keys.has('Space');
-  arena?.setInput(pad.mx, pad.my);
 }
 
 function startKeys() {
+  if (keysBound) return;
+  keysBound = true;
   window.addEventListener('keydown', (e) => {
     if (!KEY_CODES.has(e.code)) return;
     if (!e.repeat) keys.add(e.code);
@@ -101,13 +117,46 @@ function startKeys() {
   });
 }
 
-function showArena(on) {
-  document.body.classList.toggle('screen-mode', useScreen);
-  document.body.classList.toggle('waiting', !on);
-  arenaEl.classList.toggle('hidden', !on);
-  keysHint.classList.toggle('hidden', !useScreen);
-  if (on && useScreen && !arena) arena = new EscortArena(arenaEl);
-  else if (on) arena?.resize();
+function showBridge(combat) {
+  document.body.classList.toggle('bridge-mode', useKeys);
+  document.body.classList.toggle('waiting', !combat);
+  if (!useKeys) {
+    bridge.classList.add('hidden');
+    keysHint.classList.add('hidden');
+    return;
+  }
+  bridge.classList.remove('hidden');
+  keysHint.classList.remove('hidden');
+}
+
+function paintBrief(brief, combat) {
+  if (!useKeys) return;
+  showBridge(combat);
+  if (!combat) {
+    waveLine.textContent = 'Standing by · docked with the captain';
+    routeLine.textContent = 'Flight stats appear when the captain undocks';
+    setMeter($('.cap-hull-meter'), 0, 1);
+    setMeter($('.cap-shield-meter'), 0, 1);
+    $('.wave-v').textContent = '—';
+    $('.en-v').textContent = '—';
+    $('.by-v').textContent = '—';
+    $('.k-v').textContent = '—';
+    $('.es-v').textContent = '—';
+    $('.wpn-v').textContent = '—';
+    return;
+  }
+  waveLine.textContent = brief?.wt || 'In combat';
+  const from = brief?.from || '';
+  const to = brief?.to || '';
+  routeLine.textContent = from && to ? `${from} → ${to}` : '';
+  setMeter($('.cap-hull-meter'), brief?.capH ?? 0, brief?.capM ?? 0);
+  setMeter($('.cap-shield-meter'), brief?.sh ?? 0, brief?.sm ?? 0);
+  $('.wave-v').textContent = brief?.wt || '—';
+  $('.en-v').textContent = brief?.en ?? '—';
+  $('.by-v').textContent = brief?.by != null ? String(brief.by) : '—';
+  $('.k-v').textContent = brief?.k ?? '—';
+  $('.es-v').textContent = brief?.es ?? '—';
+  $('.wpn-v').textContent = brief?.wpn ? String(brief.wpn).replace(/-/g, ' ') : '—';
 }
 
 function leave() {
@@ -123,15 +172,16 @@ async function join(callsign) {
   session = await partyPost({ action: 'join', room, callsign });
   paintShip(session.color);
   setStatus('Linked · standing by');
-  if (useScreen) {
+  if (useKeys) {
     startKeys();
-    showArena(false);
+    showBridge(false);
+    paintBrief(null, false);
   } else {
     controls.classList.remove('hidden');
     startPad();
   }
   await sendInput();
-  if (useScreen) inputTimer = window.setInterval(sendInput, 85);
+  if (useKeys) inputTimer = window.setInterval(sendInput, 85);
   else {
     pollTimer = window.setInterval(poll, 100);
     inputTimer = window.setInterval(sendInput, 100);
@@ -143,23 +193,24 @@ function applyLink(data) {
   if (typeof data.color === 'number') paintShip(data.color);
   if (data.mode === 'travel') {
     setHull(data.hull ?? 0, data.maxHull ?? 0);
-    if (data.frame) {
-      showArena(true);
-      arena?.applyFrame(data.frame, session.peer || data.peer);
-      setStatus(data.frame.wt || 'In combat · WASD move · Space fire');
+    if (useKeys) {
+      setMeter($('.you-hull-meter'), data.hull ?? 0, data.maxHull ?? 0);
+      paintBrief(data.brief, true);
+      hullMeter.classList.add('hidden');
+      setStatus(data.brief?.wt || 'In combat · WASD move · Space fire');
     } else {
-      setStatus('In combat · WASD move · Space fire');
+      setStatus('In combat');
     }
   } else {
     setStatus('Linked · standing by');
     hullMeter.classList.add('hidden');
-    showArena(false);
+    paintBrief(null, false);
   }
 }
 
 async function sendInput() {
   if (!session || inputBusy) return;
-  if (useScreen) applyPadFromKeys();
+  if (useKeys) applyPadFromKeys();
   inputBusy = true;
   try {
     const data = await partyPost({
@@ -169,9 +220,8 @@ async function sendInput() {
       mx: pad.mx,
       my: pad.my,
       fire: pad.fire ? 1 : 0,
-      screen: useScreen ? 1 : 0,
     });
-    if (useScreen) applyLink(data);
+    applyLink(data);
   } catch (err) {
     if (err.status === 404 || err.status === 403) {
       setStatus(err.message || 'Captain left. Scan the QR again.');
@@ -185,15 +235,7 @@ async function poll() {
   if (!session) return;
   try {
     const data = await partyPost({ action: 'poll', room: session.room, token: session.token });
-    if (typeof data.color === 'number') paintShip(data.color);
-    if (data.mode === 'travel') {
-      setStatus(useScreen ? 'In combat · WASD move · Space fire' : 'In combat');
-      setHull(data.hull ?? 0, data.maxHull ?? 0);
-    } else {
-      setStatus('Linked · standing by');
-      hullMeter.classList.add('hidden');
-      if (useScreen) showArena(false);
-    }
+    applyLink(data);
   } catch (err) {
     if (err.status === 404 || err.status === 403) {
       setStatus(err.message || 'Captain left. Scan the QR again.');
@@ -218,32 +260,26 @@ function startPad() {
     pad.my = Math.abs(dy) < 0.12 ? 0 : -dy;
     knob.style.transform = `translate(${dx * 36}px, ${dy * 36}px)`;
   };
-
   const endStick = () => {
     stickId = null;
     pad.mx = 0;
     pad.my = 0;
-    knob.style.transform = 'translate(0,0)';
+    knob.style.transform = '';
   };
-
   stick.addEventListener('pointerdown', (e) => {
     stickId = e.pointerId;
     stick.setPointerCapture(e.pointerId);
     moveStick(e.clientX, e.clientY);
-    e.preventDefault();
   });
   stick.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== stickId) return;
+    if (stickId !== e.pointerId) return;
     moveStick(e.clientX, e.clientY);
-    e.preventDefault();
   });
   stick.addEventListener('pointerup', endStick);
   stick.addEventListener('pointercancel', endStick);
-
-  const fireOn = (e) => {
+  const fireOn = () => {
     pad.fire = true;
     fireBtn.classList.add('hot');
-    e.preventDefault();
   };
   const fireOff = () => {
     pad.fire = false;
@@ -257,7 +293,7 @@ function startPad() {
 
 const roomInput = $('#room');
 const stickOnly = $('#stick-only');
-stickOnly.checked = !prefersScreen();
+stickOnly.checked = !prefersKeys();
 $('#callsign').value = ensureCallsign();
 form.classList.remove('hidden');
 if (/^[A-Z0-9]{5}$/.test(room)) {
@@ -282,7 +318,7 @@ form.addEventListener('submit', async (e) => {
   }
   room = code;
   saveCallsign(callsign);
-  useScreen = !stickOnly.checked;
+  useKeys = !stickOnly.checked;
   form.classList.add('hidden');
   try {
     await join(callsign);

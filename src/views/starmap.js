@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { solid, addLights } from '../fx/model.js';
 import { SHAPES } from '../fx/shapes.js';
-import { TIERS } from '../galaxy.js';
+import { TIERS, revealedSystems } from '../galaxy.js';
 import { clamp } from '../rng.js';
 import { routeDanger } from '../state.js';
 
@@ -58,6 +58,7 @@ export class StarMapView {
     });
     const egeo = new THREE.BufferGeometry();
     egeo.setAttribute('position', new THREE.BufferAttribute(epos, 3));
+    this.edgePos = egeo.getAttribute('position');
     this.edgeColors = new THREE.BufferAttribute(new Float32Array(this.edges.length * 6), 3);
     egeo.setAttribute('color', this.edgeColors);
     this.scene.add(new THREE.LineSegments(egeo, new THREE.LineBasicMaterial({ vertexColors: true })));
@@ -96,37 +97,67 @@ export class StarMapView {
     this.rating = rating;
     this.selected = selected;
     const visited = new Set(state.visited);
+    const known = revealedSystems(this.galaxy, state);
+    this.known = known;
     const sys = this.galaxy.systems;
     sys.forEach((s, i) => {
+      const show = known.has(i);
+      this.nodes[i].visible = show;
+      if (!show) return;
       if (s.terminus) return;
       const c = tierColor(s.tier);
       if (!visited.has(i)) c.multiplyScalar(0.35);
       this.nodes[i].material.color.copy(c);
     });
     const col = this.edgeColors.array;
+    const pos = this.edgePos.array;
     this.edges.forEach(([a, b], i) => {
+      const A = sys[a];
+      const B = sys[b];
+      if (!(known.has(a) && known.has(b))) {
+        pos.set([A.x, A.y, -1, A.x, A.y, -1], i * 6);
+        col.set([0, 0, 0, 0, 0, 0], i * 6);
+        return;
+      }
+      pos.set([A.x, A.y, -1, B.x, B.y, -1], i * 6);
       const d = Math.max(sys[a].tier, sys[b].tier);
       const c = tierColor(d);
       const fromHere = a === state.current || b === state.current;
-      c.multiplyScalar(fromHere ? 1 : visited.has(a) && visited.has(b) ? 0.45 : 0.18);
+      c.multiplyScalar(fromHere ? 1 : visited.has(a) && visited.has(b) ? 0.45 : 0.22);
       col.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
     });
+    this.edgePos.needsUpdate = true;
     this.edgeColors.needsUpdate = true;
 
     const here = sys[state.current];
     this.currentRing.position.set(here.x, here.y, 0.5);
     this.contractRings.forEach((r, i) => {
       const c = state.contracts[i];
-      r.visible = !!c;
+      r.visible = !!c && known.has(c.dest);
       if (!c) return;
       const d = sys[c.dest];
       r.position.set(d.x, d.y, 0.5);
       r.material.color.set(routeDanger(c.difficulty, rating).color);
     });
-    const sel = selected != null ? sys[selected] : null;
+    const sel = selected != null && known.has(selected) ? sys[selected] : null;
     this.selectRing.visible = !!sel;
     if (sel) this.selectRing.position.set(sel.x, sel.y, 0.5);
     this.rebuildLabels();
+  }
+
+  chartBounds() {
+    const sys = this.galaxy.systems;
+    const known = this.known || revealedSystems(this.galaxy, this.state || { visited: [this.galaxy.start], current: this.galaxy.start, contracts: [] });
+    const pts = [...known].map((id) => sys[id]).filter(Boolean);
+    if (!pts.length) return this.bounds;
+    const xs = pts.map((s) => s.x);
+    const ys = pts.map((s) => s.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
   }
 
   focus(id) {
@@ -136,19 +167,19 @@ export class StarMapView {
   }
 
   zoomToFit() {
-    const b = this.bounds;
+    const b = this.chartBounds();
     const aspect = this.w / this.h;
     this.center.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2);
-    this.viewH = Math.max((b.maxY - b.minY) * 1.15, ((b.maxX - b.minX) * 1.08) / aspect);
+    this.viewH = Math.max((b.maxY - b.minY) * 1.4 + 40, ((b.maxX - b.minX) * 1.2) / aspect + 40, 80);
     this.updateCamera();
   }
 
   updateCamera() {
     const aspect = this.w / this.h;
-    const b = this.bounds;
+    const b = this.chartBounds();
     this.viewH = clamp(this.viewH, 60, 1400);
-    this.center.x = clamp(this.center.x, b.minX - 60, b.maxX + 60);
-    this.center.y = clamp(this.center.y, b.minY - 60, b.maxY + 60);
+    this.center.x = clamp(this.center.x, b.minX - 40, b.maxX + 40);
+    this.center.y = clamp(this.center.y, b.minY - 40, b.maxY + 40);
     const hh = this.viewH / 2;
     const hw = hh * aspect;
     Object.assign(this.camera, {
@@ -181,7 +212,9 @@ export class StarMapView {
   pick(sx, sy) {
     let best = null;
     let bestD = 16;
+    const known = this.known || revealedSystems(this.galaxy, this.state);
     for (const s of this.galaxy.systems) {
+      if (known && !known.has(s.id)) continue;
       const p = this.worldToScreen(s.x, s.y);
       const d = Math.hypot(p.x - sx, p.y - sy);
       if (d < bestD) {
@@ -258,15 +291,24 @@ export class StarMapView {
 
   rebuildLabels() {
     if (!this.labelsEl || !this.state) return;
-    const ids = new Set([this.state.current, this.galaxy.end, ...this.state.contracts.map((c) => c.dest)]);
-    if (this.hovered) ids.add(this.hovered.id);
+    const known = this.known || revealedSystems(this.galaxy, this.state);
+    const named = new Set([this.state.current, ...this.state.contracts.map((c) => c.dest)]);
+    if (this.state.visited.includes(this.galaxy.end)) named.add(this.galaxy.end);
+    if (this.hovered && known.has(this.hovered.id)) named.add(this.hovered.id);
     this.labelsEl.innerHTML = '';
     this.labels.clear();
-    for (const id of ids) {
+    for (const id of named) {
+      if (!known.has(id)) continue;
       const s = this.galaxy.systems[id];
+      const namedVisit = id === this.state.current || this.state.visited.includes(id) || this.state.contracts.some((c) => c.dest === id);
       const div = document.createElement('div');
-      div.className = 'map-label' + (id === this.state.current ? ' current' : '') + (s.terminus ? ' terminus' : '');
-      div.textContent = id === this.state.current ? `${s.name} (you)` : s.name;
+      const showTerminus = s.terminus && namedVisit;
+      div.className = 'map-label' + (id === this.state.current ? ' current' : '') + (showTerminus ? ' terminus' : '');
+      div.textContent = id === this.state.current
+        ? `${s.name} (you)`
+        : namedVisit
+          ? s.name
+          : 'Unexplored';
       this.labelsEl.appendChild(div);
       this.labels.set(id, div);
     }
@@ -277,7 +319,8 @@ export class StarMapView {
     const pulse = 1 + Math.sin(this.t * 4) * 0.12;
     this.currentRing.scale.setScalar(pulse);
     this.selectRing.rotation.z += dt;
-    this.nodes[this.galaxy.end].rotation.z += dt * 0.4;
+    const endNode = this.nodes[this.galaxy.end];
+    if (endNode.visible) endNode.rotation.z += dt * 0.4;
     for (const [id, div] of this.labels) {
       const s = this.galaxy.systems[id];
       const p = this.worldToScreen(s.x, s.y);

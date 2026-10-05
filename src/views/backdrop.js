@@ -3,6 +3,7 @@ import { Starfield } from '../fx/starfield.js';
 import { glowSprite } from '../fx/geom.js';
 import { addLights } from '../fx/model.js';
 import { createPlayerShip } from '../fx/ship.js';
+import { load } from '../state.js';
 
 // Ambient starfield behind the main menu and station screens.
 export class BackdropView {
@@ -26,7 +27,7 @@ export class BackdropView {
     }
 
     // A ship that drifts across the menu for flavor.
-    this.ship = createPlayerShip().group;
+    this.ship = createPlayerShip(undefined, { ship: load()?.ship || 'hauler' }).group;
     this.ship.scale.setScalar(1.6);
     this.scene.add(this.ship);
     this.showShip = true;

@@ -3,7 +3,7 @@ import { tierCss } from '../views/starmap.js';
 
 // DOM overlay for the travel screen.
 export class TravelHUD {
-  constructor(root, { from, to, difficulty, owned, onResume, onRetreat }) {
+  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, onResume, onRetreat }) {
     this.root = root;
     root.innerHTML = `
       <div class="hud">
@@ -18,15 +18,19 @@ export class TravelHUD {
         <div class="hud-tr">
           <div class="route">${from} <span>→</span> ${to}</div>
           <div class="diff">Difficulty <b style="color:${tierCss(difficulty)}">${difficulty}</b></div>
+          <div class="pace">Pace <b class="pace-v">${pace}</b></div>
+          ${heat ? `<div class="heat">Heat <b>+${heat}</b></div>` : ''}
           <div class="bounty">Bounty <b class="bounty-v">0</b> cr</div>
         </div>
         <div class="hud-bc weapons">
-          ${WEAPON_ORDER.map(
-            (id, i) => `<div class="wslot ${owned.includes(id) ? '' : 'locked'}" data-w="${id}">
-              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}</div>`,
-          ).join('')}
+          ${WEAPON_ORDER.map((id, i) => {
+            const mounted = (mounts || []).includes(id);
+            return `<div class="wslot ${owned.includes(id) ? '' : 'locked'} ${mounted ? 'mounted' : ''}" data-w="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">
+              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}${mounted ? '<span class="mnt">Mounted</span>' : ''}</div>`;
+          }).join('')}
+          <div class="mount-row">${(mounts || []).map((id) => `<span class="mount-pip" data-m="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">${WEAPONS[id].name}</span>`).join('')}</div>
         </div>
-        <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-4 / Q E weapons · Esc pause</div>
+          <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-8 / Q E weapons · Esc pause</div>
         <div class="banner"></div>
         <div class="pause-overlay hidden">
           <div class="panel">
@@ -44,6 +48,8 @@ export class TravelHUD {
       wave: $('.wave-label'), boss: $('.bossbar'), bossFill: $('.bossbar span'),
       bounty: $('.bounty-v'), banner: $('.banner'), pause: $('.pause-overlay'), auto: $('.auto-v'),
       slots: [...root.querySelectorAll('.wslot')],
+      mounts: [...root.querySelectorAll('.mount-pip')],
+      pace: $('.pace-v'),
     };
     this.el.pause.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
@@ -59,7 +65,7 @@ export class TravelHUD {
     fn(value);
   }
 
-  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, seeker }) {
+  update({ hull, maxHull, shield, maxShield, bounty, weapon, waveText, boss, auto, seeker, mounts }) {
     if (seeker) {
       const label = seeker.unlimited ? '∞' : seeker.reload > 0 ? `${seeker.reload.toFixed(1)}s` : '▮'.repeat(seeker.ammo) + '▯'.repeat(seeker.max - seeker.ammo);
       this.set('seeker', label, (v) => {
@@ -80,7 +86,16 @@ export class TravelHUD {
       this.el.shieldV.textContent = `${v}/${maxShield}`;
     });
     this.set('bounty', bounty, (v) => (this.el.bounty.textContent = v));
-    this.set('weapon', weapon, (v) => this.el.slots.forEach((s) => s.classList.toggle('active', s.dataset.w === v)));
+    this.set('weapon', weapon, (v) => this.el.slots.forEach((s) => {
+      s.classList.toggle('active', s.dataset.w === v);
+      s.classList.toggle('mounted', (mounts || []).includes(s.dataset.w));
+    }));
+    if (mounts) {
+      const key = mounts.join('|');
+      this.set('mounts', key, () => {
+        this.el.mounts.forEach((el) => el.classList.toggle('live', mounts.includes(el.dataset.m)));
+      });
+    }
     this.set('wave', waveText, (v) => (this.el.wave.textContent = v));
     this.set('auto', auto, (v) => (this.el.auto.textContent = v ? 'ON' : 'OFF'));
     this.set('boss', boss == null ? -1 : Math.ceil(boss * 200), (v) => {

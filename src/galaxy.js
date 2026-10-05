@@ -1,4 +1,5 @@
 import { RNG } from './rng.js';
+import { SYSTEMS } from './data.js';
 
 export const TIERS = 10;
 const PER_TIER = 3;
@@ -93,6 +94,35 @@ export function generateGalaxy(seed) {
   }
 
   return { seed, systems, start, end };
+}
+
+export function scanRange(state) {
+  const def = SYSTEMS.scanner;
+  const lvl = Number.isInteger(state?.upgrades?.scanner) ? state.upgrades.scanner : def.start;
+  return Math.max(1, def.value(lvl));
+}
+
+// Visited stations plus systems within scanner range. Everything else stays off the map.
+export function revealedSystems(galaxy, state) {
+  const sys = galaxy?.systems || [];
+  const range = scanRange(state);
+  const dist = new Map();
+  const queue = [];
+  const add = (id, d) => {
+    if (!sys[id] || dist.has(id)) return;
+    dist.set(id, d);
+    queue.push(id);
+  };
+  for (const id of state?.visited || []) add(id, 0);
+  add(state?.current, 0);
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i];
+    const d = dist.get(id);
+    if (d >= range) continue;
+    for (const l of sys[id].links) add(l, d + 1);
+  }
+  for (const c of state?.contracts || []) add(c.dest, 0);
+  return new Set(dist.keys());
 }
 
 export function routeDifficulty(galaxy, a, b) {

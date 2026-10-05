@@ -1,14 +1,17 @@
 import { generateGalaxy } from './galaxy.js';
-import { SYSTEMS, WEAPON_ORDER } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load } from './state.js';
+import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
+import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave, paceForBoard, formatPace, recordTerminusClear, formatHeat } from './state.js';
+import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
 import { TravelView } from './views/travel.js';
 import { DockView } from './views/dock.js';
 import { renderMenu } from './ui/menu.js';
 import { renderLeaderboard } from './ui/leaderboard.js';
+import { renderSettings } from './ui/settings.js';
 import { StationScreen } from './ui/station.js';
 import {
+  abandonRun,
   CALLSIGN_RE,
   ensureCallsign,
   formatRunTime,
@@ -18,7 +21,11 @@ import {
   runScore,
   saveCallsign,
   submitRun,
+  uniqueCallsign,
+  BOARD_SEASON,
 } from './score.js';
+import { VERSION } from './changelog.js';
+import { shouldShowWhatsNew } from './prefs.js';
 
 const fmt = (n) => Math.round(n).toLocaleString();
 const PRECISION_BONUS = 0.1; // share of cargo pay awarded for docking without bumps
@@ -69,7 +76,7 @@ export class Game {
     this.showMenu();
   }
 
-  showMenu() {
+  showMenu(view = 'home') {
     this.flushClock();
     this.screen = 'menu';
     this.station?.destroy();
@@ -77,16 +84,36 @@ export class Game {
     this.app.hud.innerHTML = '';
     this.backdrop.showShip = true;
     this.app.setView(this.backdrop);
+    const slots = listSlots();
+    const showWhatsNew = view === 'home' && shouldShowWhatsNew(VERSION);
     renderMenu(this.app.ui, {
-      hasSave: !!load(),
-      muted: this.app.audio.muted,
-      callsign: ensureCallsign(),
-      onNew: () => this.newGame(),
-      onContinue: () => this.continueGame(),
-      onToggleMute: () => this.app.audio.toggleMute(),
+      slots,
+      view,
+      showWhatsNew,
+      onContinue: () => this.showMenu('continue'),
+      onPickSave: (index) => this.continueGame(index),
+      onDeleteSave: async (index) => {
+        await abandonRun(peekSlot(index));
+        clearSave(index);
+        const cur = load();
+        if (!this.state || !cur || cur.runId !== this.state.runId) this.state = null;
+        this.showMenu(occupiedSlots().length ? 'continue' : 'home');
+      },
+      onNew: () => {
+        this.replaceSlot = null;
+        if (freeSlotIndex() < 0) this.showMenu('replace');
+        else this.showMenu('new');
+      },
+      onReplace: (index) => {
+        this.replaceSlot = index;
+        this.showMenu('new');
+      },
+      onStart: (name) => this.newGame(name, this.replaceSlot),
+      onBack: () => this.showMenu('home'),
       onLeaderboard: () => this.showLeaderboard(),
-      onCallsign: (name) => saveCallsign(name),
+      onSettings: (panel) => this.showSettings(panel),
     });
+    if (view !== 'new') this.replaceSlot = null;
   }
 
   showLeaderboard() {
@@ -96,31 +123,60 @@ export class Game {
     renderLeaderboard(this.app.ui, { onBack: () => this.showMenu() });
   }
 
+  showSettings(panel = 'hub') {
+    this.screen = 'menu';
+    this.backdrop.showShip = true;
+    this.app.setView(this.backdrop);
+    renderSettings(this.app.ui, {
+      audio: this.app.audio,
+      party: this.app.party,
+      initialPanel: panel || 'hub',
+      onBack: () => this.showMenu(),
+      onSaveCleared: () => {
+        const cur = load();
+        if (!this.state || !cur || cur.runId !== this.state.runId) this.state = null;
+      },
+      onQrLock: (on) => this.app.party?.setQrVisible(on, true),
+    });
+  }
+
   setGalaxy(seed) {
     this.galaxy = generateGalaxy(seed);
     this.starmap = new StarMapView(this.galaxy, this.app.pixelRatio);
   }
 
-  newGame() {
+  async newGame(name, replaceIndex) {
     this.app.audio.play('click');
+    const taken = occupiedSlots()
+      .filter((s) => s.index !== replaceIndex)
+      .map((s) => s.callsign);
+    const callsign = uniqueCallsign(name, taken);
+    const slot = Number.isInteger(replaceIndex) ? replaceIndex : freeSlotIndex();
+    if (slot < 0) return this.showMenu('replace');
+    const prev = peekSlot(slot);
+    if (hasRunClock(prev)) await abandonRun(prev);
     this.setGalaxy(Math.floor(Math.random() * 2 ** 31));
     this.state = newState(this.galaxy);
+    this.state.callsign = callsign;
     generateContracts(this.state, this.galaxy);
-    save(this.state);
+    writeActive(this.state, slot);
+    saveCallsign(callsign);
+    this.replaceSlot = null;
     this.showStation({
       kind: 'info',
       title: 'For Mulerebs',
-      lines: [['Starting credits', `${this.state.credits} cr`]],
+      lines: [['Callsign', callsign], ['Starting credits', `${this.state.credits} cr`]],
       note: 'You are the chosen one of Mulerebs, long oppressed by the KL9 robot army. Your people have given you a ship with minimal weapons and the code that can shut the KL9 down. Deliver it to their core at the Terminus, on the far edge of the map. The KL9 can only strike at warp, so stations are safe: trade between them, gather technologies, and grow strong enough for the deep lanes.',
     });
   }
 
-  continueGame() {
+  continueGame(index) {
     this.app.audio.play('click');
-    const s = load();
+    const s = load(index);
     if (!s) return this.showMenu();
     if (this.galaxy?.seed !== s.seed) this.setGalaxy(s.seed);
     this.state = s;
+    if (s.callsign) saveCallsign(s.callsign);
     if (!s.contracts?.length) generateContracts(s, this.galaxy);
     this.showStation();
   }
@@ -235,6 +291,7 @@ export class Game {
     s.weapon = r.weapon;
     s.stats.flights++;
     s.stats.kills += r.kills;
+    recordFlight(s, r);
     let report;
 
     if (r.success) {
@@ -267,10 +324,12 @@ export class Game {
         note: firstVisit ? `First visit to ${dest.name}. New lanes charted.` : '',
       };
       if (dest.terminus && !s.won) {
+        recordTerminusClear(s);
         s.won = true;
+        const unlocks = checkAchievements(s, r);
         generateContracts(s, this.galaxy);
         save(s);
-        this.showVictory();
+        this.showVictory(unlocks);
         return;
       }
     } else if (r.retreat) {
@@ -297,12 +356,18 @@ export class Game {
         note: `Your wreck was towed back to ${origin.name}.`,
       };
     }
+    const unlocks = checkAchievements(s, r);
+    if (unlocks.length) {
+      report.unlocks = unlocks;
+      const extra = unlocks.map((u) => `${u.name} — ${u.reward}`).join(' ');
+      report.note = report.note ? `${report.note} ${extra}` : extra;
+    }
     generateContracts(s, this.galaxy);
     save(s);
     this.showStation(report);
   }
 
-  showVictory() {
+  showVictory(unlocks = []) {
     const s = this.state;
     this.screen = 'victory';
     this.app.audio.play('victory');
@@ -311,7 +376,7 @@ export class Game {
     const score = runScore(s.stats);
     const timed = hasRunClock(s);
     const timeLabel = timed ? formatRunTime(s.runMs) : '—';
-    const priorName = ensureCallsign();
+    const priorName = s.callsign || ensureCallsign();
     this.app.ui.innerHTML = `
       <div class="menu victory">
         <h1 class="logo">KL9 CORE<span>SHUT DOWN</span></h1>
@@ -324,11 +389,15 @@ export class Game {
           <div class="r-line"><span>Ships lost</span><b>${s.stats.deaths}</b></div>
           <div class="r-line"><span>Systems visited</span><b>${s.visited.length} / ${this.galaxy.systems.length}</b></div>
           <div class="r-line"><span>Run time</span><b>${timeLabel}</b></div>
+          <div class="r-line"><span>Credits on hand</span><b>${fmt(s.credits)} cr</b></div>
+          <div class="r-line"><span>Pace matching</span><b>${s.paced !== false ? formatPace(s.paceAvg || s.paceLast || 1) : 'Off'}</b></div>
+          ${formatHeat(s) ? `<div class="r-line"><span>Lane heat</span><b>${formatHeat(s)}</b></div>` : ''}
           <div class="r-line"><span>Credits</span><b class="accent">+${fmt(score.earned)}</b></div>
           <div class="r-line"><span>Kills × 50</span><b class="accent">+${fmt(score.killPts)}</b></div>
           <div class="r-line"><span>Capital ships × 2,500</span><b class="accent">+${fmt(score.bossPts)}</b></div>
-          <div class="r-line"><span>Ships lost × 10,000</span><b class="warn">−${fmt(score.deathPts)}</b></div>
+          <div class="r-line"><span>Ships lost × ${fmt(SCORE.death)}</span><b class="warn">−${fmt(score.deathPts)}</b></div>
           <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
+          ${unlocks.length ? unlocks.map((u) => `<div class="r-line"><span>${u.name}</span><b class="accent">${u.reward}</b></div>`).join('') : ''}
           ${
             s.cheated
               ? '<p class="muted small">Test run: the dev console was used, so it cannot be posted.</p>'
@@ -389,6 +458,10 @@ export class Game {
         deliveries: s.stats.deliveries,
         seed: s.seed,
         status: 'done',
+        paced: s.paced !== false,
+        credits: Math.max(0, Math.round(s.credits || 0)),
+        pace: paceForBoard(s),
+        season: BOARD_SEASON,
       });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
@@ -405,7 +478,7 @@ export class Game {
   pushLiveScore() {
     const s = this.state;
     if (!hasRunClock(s) || s.won || s.cheated) return;
-    const callsign = loadCallsign().trim() || ensureCallsign();
+    const callsign = (s.callsign || loadCallsign() || ensureCallsign()).trim();
     if (!CALLSIGN_RE.test(callsign)) return;
     const score = runScore(s.stats);
     submitRun({
@@ -420,6 +493,10 @@ export class Game {
       deliveries: s.stats.deliveries,
       seed: s.seed,
       status: 'live',
+      paced: s.paced !== false,
+      credits: Math.max(0, Math.round(s.credits || 0)),
+      pace: paceForBoard(s),
+      season: BOARD_SEASON,
     }).catch(() => {});
   }
 }

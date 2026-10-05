@@ -1,6 +1,7 @@
 import * as DATA from '../data.js';
-import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES, WEAPON_UPGRADES } from '../data.js';
-import { save, shipStats, shipRating, generateContracts } from '../state.js';
+import { SYSTEMS, WEAPONS, WEAPON_ORDER, ENEMIES, SHIPS, SHIP_ORDER, WEAPON_MODS } from '../data.js';
+import { save, shipStats, shipRating, generateContracts, selectShip } from '../state.js';
+import { unlockAllForCheat, grantShipUnlock } from '../achievements.js';
 import { routeDifficulty } from '../galaxy.js';
 
 // Cheat / test console. Toggle with the backtick key (`).
@@ -211,13 +212,13 @@ function buildCommands(dc) {
       },
     },
     upgrade: {
-      group: 'Ship & economy', args: '<system|all> <level|max>', help: `Set an upgrade level. Systems: ${Object.keys(SYSTEMS).join(', ')}; weapon upgrades: ${Object.keys(WEAPON_UPGRADES).join(', ')}.`, needs: 'game', cheat: true,
-      complete: (i) => (i === 0 ? [...Object.keys(SYSTEMS), ...Object.keys(WEAPON_UPGRADES), 'all'] : ['max']),
+      group: 'Ship & economy', args: '<system|all> <level|max>', help: `Set an upgrade level. Systems: ${Object.keys(SYSTEMS).join(', ')}; weapon upgrades: ${Object.keys(WEAPON_MODS).join(', ')}.`, needs: 'game', cheat: true,
+      complete: (i) => (i === 0 ? [...Object.keys(SYSTEMS), ...Object.keys(WEAPON_MODS), 'all'] : ['max']),
       run: ([sys, lvl = 'max']) => {
-        const wu = WEAPON_UPGRADES[sys];
+        const wu = WEAPON_MODS[sys];
         if (wu) {
           const level = Math.max(wu.start, Math.min(wu.max, lvl === 'max' ? wu.max : num(lvl, 'level')));
-          s().weaponLevels = { ...s().weaponLevels, [sys]: level };
+          s().weaponMods = { ...s().weaponMods, [sys]: level };
           return `${wu.name} level ${level}: ${wu.format(wu.value(level))}. Takes effect next flight.`;
         }
         const keys = sys === 'all' ? Object.keys(SYSTEMS) : [sys];
@@ -247,8 +248,25 @@ function buildCommands(dc) {
         for (const w of ids) {
           if (!WEAPONS[w]) throw new Error(`Unknown weapon "${id}"`);
           if (!s().weapons.includes(w)) s().weapons.push(w);
+          if (!s().weaponLevels) s().weaponLevels = {};
+          if (!s().weaponLevels[w]) s().weaponLevels[w] = 1;
         }
         return `Weapons: ${s().weapons.join(', ')}. Takes effect next flight.`;
+      },
+    },
+    hull: {
+      group: 'Ship & economy', args: '<id|all>', help: `Fit a hull. Ids: ${SHIP_ORDER.join(', ')}.`, needs: 'game', cheat: true,
+      complete: () => [...SHIP_ORDER, 'all'],
+      run: ([id]) => {
+        if (id === 'all') {
+          unlockAllForCheat(s());
+          return `All hulls unlocked. Fitted ${SHIPS[s().ship].name}.`;
+        }
+        if (!SHIPS[id]) throw new Error(`Unknown hull "${id}"`);
+        grantShipUnlock(id);
+        selectShip(s(), id);
+        s().hull = shipStats(s()).maxHull;
+        return `Fitted ${SHIPS[id].name}.`;
       },
     },
     god: {

@@ -40,7 +40,7 @@ Any command that changes the game marks the save as a **test run**, which can't 
 - `src/galaxy.js` builds a seeded map of 30 systems in 10 difficulty tiers, with the Terminus at the far end.
 - `src/state.js` holds save data, the economy, contracts and ship rating.
 - `src/views/` has the Three.js scenes: `dock` (docking/undocking mini-game), `travel` (combat), `starmap`, `backdrop`.
-- `src/ui/` has the DOM screens: menu, station, and the in-flight HUD.
+- `src/ui/` has the DOM screens: menu, settings, station, and the in-flight HUD.
 - `src/fx/` has the low-poly model builder (`model.js`), ship outlines, particles and starfield.
 
 Progress auto-saves to `localStorage` each time you dock.
@@ -49,13 +49,17 @@ Progress auto-saves to `localStorage` each time you dock.
 
 The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run is posted while the captain is still flying (`status: live`, shown as **In flight**) and again when they submit after delivering to the Terminus (`status: done`, **Arrived**). The Score tab includes open runs. The Time tab is finished runs only. In-flight rows drop off if they are not updated for 15 minutes.
 
+Bug reports and feature requests use the same database through [`server/api/feedback.php`](server/api/feedback.php). Feature requests are public in Settings; bug reports are stored only (read them in MariaDB). Set `feedback.hidden = 1` to pull a request off the public list.
+
 1. In Plesk, create a MariaDB database and user, then run [`server/schema.sql`](server/schema.sql).
 2. Copy [`server/api/config.example.php`](server/api/config.example.php) to `server/api/config.php` on the server and fill in those credentials. Keep `config.php` out of git.
-3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/`.
+3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/` (include `feedback.php`).
 4. Confirm PHP 8.1 or newer is selected for the domain (the Plesk default on current installs).
-5. If this database already existed, also run the `ALTER TABLE` statements at the bottom of [`server/schema.sql`](server/schema.sql) (`runs.status` and `party_rooms.frame`).
+5. If this database already existed, also run the `ALTER TABLE` statements at the bottom of [`server/schema.sql`](server/schema.sql) (`runs.status` and `party_rooms.frame`), and create the `feedback` table from that file if it is missing.
 
-No Node.js extension is required on the server. Local `npm run dev` still plays; the board panel explains it is offline until `/api` is on the same host. Escorts use an in-memory party API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
+No Node.js extension is required on the server. Local `npm run dev` still plays; the board and feedback panels explain they are offline until `/api` is on the same host. Escorts and feedback use an in-memory API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
+
+Deferred ideas live in [`ideas.md`](ideas.md).
 
 ## Escorts
 
@@ -64,4 +68,4 @@ The bottom-left QR (or the 5-character code) opens the escort page. Linked devic
 - **Phone:** virtual stick and fire button.
 - **Laptop:** the combat arena on that screen, **WASD / arrows** to move, **Space** to fire. Check **Use the on-screen stick** to join as a pad instead. The other machine must open the same origin (the deployed site, or the dev server via the host's LAN address). `localhost` on the captain's machine is not reachable from another laptop.
 
-After pulling this change on Plesk, run the `ALTER TABLE` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, upload [`server/api/party.php`](server/api/party.php) and [`server/api/score.php`](server/api/score.php) / [`server/api/board.php`](server/api/board.php), and upload a fresh `dist/` that includes `controller.html`. Stick, fire, and combat frames go through `/api`. Each escort gets a distinct ship color.
+After pulling this change on Plesk, run the `ALTER TABLE` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, create the `feedback` table if needed, upload [`server/api/party.php`](server/api/party.php), [`server/api/score.php`](server/api/score.php) / [`server/api/board.php`](server/api/board.php), and [`server/api/feedback.php`](server/api/feedback.php), and upload a fresh `dist/` that includes `controller.html`. Stick, fire, and combat frames go through `/api`. Each escort gets a distinct ship color.

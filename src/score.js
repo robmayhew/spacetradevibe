@@ -1,8 +1,11 @@
 import { SCORE } from './data.js';
+import { paceForBoard } from './state.js';
 
 const CALLSIGN_KEY = 'txl-trader-callsign';
 const API = '/api';
 
+export const BOARD_SEASON = 'beta';
+export const BOARD_SEASON_LABEL = 'Beta Season';
 export const CALLSIGN_RE = /^[A-Za-z0-9][A-Za-z0-9 -]{0,14}[A-Za-z0-9]$/;
 export const MIN_TIME_MS = 3 * 60 * 1000;
 
@@ -68,8 +71,24 @@ export function ensureCallsign() {
   return name;
 }
 
+export function uniqueCallsign(desired, taken = []) {
+  let base = String(desired || '').trim();
+  if (!CALLSIGN_RE.test(base)) base = randomCallsign();
+  const used = new Set((taken || []).map((n) => String(n).trim().toLowerCase()).filter(Boolean));
+  if (!used.has(base.toLowerCase())) return base;
+  for (let n = 2; n < 100; n++) {
+    const suffix = `-${n}`;
+    let stem = base;
+    while (stem.length + suffix.length > 16) stem = stem.slice(0, -1);
+    if (stem.length < 1) break;
+    const next = `${stem}${suffix}`;
+    if (CALLSIGN_RE.test(next) && !used.has(next.toLowerCase())) return next;
+  }
+  return randomCallsign();
+}
+
 export async function fetchBoard(sort = 'score') {
-  const res = await fetch(`${API}/board.php?sort=${sort === 'time' ? 'time' : 'score'}`);
+  const res = await fetch(`${API}/board.php?sort=${sort === 'time' ? 'time' : 'score'}&season=${encodeURIComponent(BOARD_SEASON)}`);
   if (!res.ok) throw new Error('offline');
   return res.json();
 }
@@ -88,4 +107,37 @@ export async function submitRun(payload) {
     throw err;
   }
   return data;
+}
+
+function runPayload(state, status) {
+  const score = runScore(state.stats);
+  const callsign = String(state.callsign || loadCallsign() || '').trim();
+  return {
+    run_id: state.runId,
+    callsign,
+    score: score.total,
+    time_ms: Math.round(Number.isFinite(state.runMs) ? state.runMs : 0),
+    earned: state.stats?.earned ?? 0,
+    kills: state.stats?.kills ?? 0,
+    bosses: state.stats?.bosses ?? 0,
+    deaths: state.stats?.deaths ?? 0,
+    deliveries: state.stats?.deliveries ?? 0,
+    seed: state.seed ?? 0,
+    status,
+    paced: state.paced !== false,
+    credits: Math.max(0, Math.round(Number(state.credits) || 0)),
+    pace: paceForBoard(state),
+    season: BOARD_SEASON,
+  };
+}
+
+export async function abandonRun(state) {
+  if (!hasRunClock(state) || state.won || state.cheated) return;
+  const payload = runPayload(state, 'void');
+  if (!CALLSIGN_RE.test(payload.callsign)) return;
+  try {
+    await submitRun(payload);
+  } catch {
+    // board may be offline; the local save is still replaced
+  }
 }
