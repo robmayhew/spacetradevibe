@@ -64,6 +64,13 @@ export function renderMenu(root, {
           <span><kbd>Esc</kbd> pause</span>
           <span>🎮 Gamepad: stick / D-pad move · <kbd>A</kbd>/<kbd>RT</kbd> fire · <kbd>LB</kbd> <kbd>RB</kbd> weapons · <kbd>X</kbd> auto-fire · <kbd>Start</kbd> pause · <kbd>A</kbd>/<kbd>B</kbd> select / back in menus</span>
         </div>
+        <div class="touch-howto">
+          <span>Stick to move</span>
+          <span>Fire</span>
+          <span>Auto</span>
+          <span>Weapons</span>
+          <span>Pause</span>
+        </div>
       </div>
     </div>`;
   const joinForm = root.querySelector('.join-code');

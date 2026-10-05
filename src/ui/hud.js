@@ -1,10 +1,12 @@
 import { WEAPONS, WEAPON_ORDER } from '../data.js';
 import { tierCss } from '../views/starmap.js';
+import { copyRoomCode, escortInviteHtml } from '../mobile.js';
 
 // DOM overlay for the travel screen.
 export class TravelHUD {
-  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, onResume, onRetreat }) {
+  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, onResume, onRetreat, party, onWeapon }) {
     this.root = root;
+    this.party = party;
     root.innerHTML = `
       <div class="hud">
         <div class="hud-tl">
@@ -25,8 +27,8 @@ export class TravelHUD {
         <div class="hud-bc weapons">
           ${WEAPON_ORDER.map((id, i) => {
             const mounted = (mounts || []).includes(id);
-            return `<div class="wslot ${owned.includes(id) ? '' : 'locked'} ${mounted ? 'mounted' : ''}" data-w="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">
-              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}${mounted ? '<span class="mnt">Mounted</span>' : ''}</div>`;
+            return `<button type="button" class="wslot ${owned.includes(id) ? '' : 'locked'} ${mounted ? 'mounted' : ''}" data-w="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">
+              <kbd>${i + 1}</kbd>${WEAPONS[id].name}${id === 'seeker' && owned.includes(id) ? ' <span class="ammo"></span>' : ''}${mounted ? '<span class="mnt">Mounted</span>' : ''}</button>`;
           }).join('')}
           <div class="mount-row">${(mounts || []).map((id) => `<span class="mount-pip" data-m="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">${WEAPONS[id].name}</span>`).join('')}</div>
         </div>
@@ -35,6 +37,7 @@ export class TravelHUD {
         <div class="pause-overlay hidden">
           <div class="panel">
             <h2>Paused</h2>
+            ${escortInviteHtml(party)}
             <button class="btn primary" data-act="resume">Resume</button>
             <button class="btn danger" data-act="retreat">Retreat to origin</button>
             <p class="muted">Retreating forfeits the contract and bounties, but costs no tow fee.</p>
@@ -53,8 +56,18 @@ export class TravelHUD {
     };
     this.el.pause.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'copy-room') {
+        copyRoomCode(this.party, e.target.closest('[data-act]'));
+        return;
+      }
       if (act === 'resume') onResume();
       if (act === 'retreat') onRetreat();
+    });
+    this.el.slots.forEach((slot) => {
+      slot.addEventListener('click', () => {
+        if (slot.classList.contains('locked') || slot.classList.contains('mounted')) return;
+        onWeapon?.(slot.dataset.w);
+      });
     });
     this.cache = {};
   }

@@ -174,6 +174,11 @@ export class StarMapView {
     this.updateCamera();
   }
 
+  zoomBy(factor) {
+    this.viewH *= factor;
+    this.updateCamera();
+  }
+
   updateCamera() {
     const aspect = this.w / this.h;
     const b = this.chartBounds();
@@ -231,11 +236,30 @@ export class StarMapView {
     this.labelsEl = labelsEl;
     this.rebuildLabels();
     let drag = null;
+    const pointers = new Map();
+    let pinch = null;
     const onDown = (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), viewH: this.viewH };
+        drag = null;
+        return;
+      }
       drag = { x: e.clientX, y: e.clientY, cx: this.center.x, cy: this.center.y, moved: false };
       el.setPointerCapture(e.pointerId);
     };
     const onMove = (e) => {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch.dist > 1 && dist > 1) {
+          this.viewH = pinch.viewH * (pinch.dist / dist);
+          this.updateCamera();
+        }
+        return;
+      }
       if (drag) {
         const dx = e.clientX - drag.x;
         const dy = e.clientY - drag.y;
@@ -253,10 +277,12 @@ export class StarMapView {
       el.style.cursor = drag?.moved ? 'grabbing' : hit ? 'pointer' : 'grab';
     };
     const onUp = (e) => {
-      if (drag && !drag.moved) {
+      if (drag && !drag.moved && !pinch) {
         const hit = this.pick(e.clientX, e.clientY);
         if (hit) onSelect(hit);
       }
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch = null;
       drag = null;
     };
     const onWheel = (e) => {
@@ -272,11 +298,13 @@ export class StarMapView {
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
     el.addEventListener('wheel', onWheel, { passive: false });
     this.detachFn = () => {
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
       el.removeEventListener('wheel', onWheel);
     };
   }

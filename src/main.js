@@ -9,13 +9,16 @@ import { Sfx } from './audio.js';
 import { Game } from './game.js';
 import { PadNav } from './ui/padnav.js';
 import { PartyHost } from './party/host.js';
+import { applyMobileLayout, pixelRatioCap, registerServiceWorker, startMobileLayout } from './mobile.js';
+import { TouchPad } from './ui/touchpad.js';
 
 class App {
   constructor() {
+    startMobileLayout();
     this.container = document.getElementById('app');
     this.ui = document.getElementById('ui');
     this.hud = document.getElementById('hud');
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, pixelRatioCap());
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(this.pixelRatio);
@@ -30,6 +33,7 @@ class App {
     this.composer.addPass(new OutputPass());
 
     this.input = new Input();
+    this.pad = new TouchPad(document.getElementById('touch-pad'), this.input);
     this.padNav = new PadNav(this);
     this.audio = new Sfx();
     this.view = null;
@@ -57,9 +61,10 @@ class App {
   }
 
   resize() {
+    applyMobileLayout();
     this.w = window.innerWidth;
     this.h = window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    const pr = Math.min(window.devicePixelRatio || 1, pixelRatioCap());
     if (pr !== this.pixelRatio) {
       // e.g. window dragged to a display with a different pixel density
       this.pixelRatio = pr;
@@ -69,6 +74,7 @@ class App {
     this.renderer.setSize(this.w, this.h);
     this.composer.setSize(this.w, this.h);
     this.view?.resize(this.w, this.h);
+    if (document.body.classList.contains('portrait-gate')) this.view?.setPaused?.(true);
   }
 
   frame = (now) => {
@@ -93,6 +99,7 @@ class App {
 }
 
 const app = new App();
+registerServiceWorker();
 if (import.meta.env.DEV) window.__txl = app; // debugging handle in dev builds only
 // Test console: always in dev; on a deployed build only with ?console in the URL.
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('console')) {

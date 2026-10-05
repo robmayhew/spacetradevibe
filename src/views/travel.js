@@ -152,6 +152,10 @@ export class TravelView {
       from, to, difficulty: this.d, owned: this.owned, mounts: this.mounts,
       pace: this.paceLabel,
       heat: this.heat,
+      party: app.party,
+      onWeapon: (id) => {
+        if (this.primaries.includes(id)) this.player.weapon = id;
+      },
       onResume: () => this.setPaused(false),
       onRetreat: () => this.finish({ success: false, retreat: true }),
     });

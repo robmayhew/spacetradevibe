@@ -1,7 +1,10 @@
+import { copyRoomCode, escortInviteHtml } from '../mobile.js';
+
 // DOM overlay for the docking / undocking mini-game.
 export class DockHUD {
-  constructor(root, { mode, station, pad, onResume }) {
+  constructor(root, { mode, station, pad, onResume, party }) {
     this.root = root;
+    this.party = party;
     const objective = mode === 'dock' ? `Land on <b>Pad ${pad}</b>` : `Clear <b>Pad ${pad}</b> and fly through the <b>departure gate</b>`;
     root.innerHTML = `
       <div class="hud dock-hud">
@@ -27,6 +30,7 @@ export class DockHUD {
         <div class="pause-overlay hidden">
           <div class="panel">
             <h2>Paused</h2>
+            ${escortInviteHtml(party)}
             <button class="btn primary" data-act="resume">Resume</button>
           </div>
         </div>
@@ -37,7 +41,12 @@ export class DockHUD {
       hint: $('.dock-hint'), banner: $('.banner'), pause: $('.pause-overlay'),
     };
     this.el.pause.addEventListener('click', (e) => {
-      if (e.target.closest('[data-act=resume]')) onResume();
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'copy-room') {
+        copyRoomCode(this.party, e.target.closest('[data-act]'));
+        return;
+      }
+      if (act === 'resume') onResume();
     });
     this.cache = {};
   }

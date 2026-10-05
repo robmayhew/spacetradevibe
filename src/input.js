@@ -16,6 +16,8 @@ export class Input {
   constructor() {
     this.held = new Set();
     this.pressed = new Set();
+    this.stickX = 0;
+    this.stickY = 0;
     this.pad = { connected: false, id: '', mapping: '', stick: { x: 0, y: 0 }, held: new Set(), pressed: new Set(), axes: [] };
     this.padKeysHeld = new Set();
     this.padKeysPressed = new Set();
@@ -27,8 +29,28 @@ export class Input {
       if (GAME_KEYS.has(e.code) && this.captureKeys) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.held.delete(e.code));
-    window.addEventListener('blur', () => this.held.clear());
+    window.addEventListener('blur', () => {
+      this.held.clear();
+      this.setStick(0, 0);
+    });
     this.captureKeys = false;
+  }
+
+  hold(code) {
+    this.held.add(code);
+  }
+
+  release(code) {
+    this.held.delete(code);
+  }
+
+  tap(code) {
+    this.pressed.add(code);
+  }
+
+  setStick(x, y) {
+    this.stickX = x;
+    this.stickY = y;
   }
 
   down(...codes) {
@@ -39,12 +61,15 @@ export class Input {
     return codes.some((c) => this.pressed.has(c) || this.padKeysPressed.has(c));
   }
 
-  // Movement as a vector: keyboard / D-pad give full speed, the stick gives analog speed.
+  // Movement as a vector: keyboard / D-pad give full speed; phone and gamepad sticks are analog.
   // y is up-positive. Length is at most 1.
   move() {
     let x = (this.down('KeyD', 'ArrowRight') ? 1 : 0) - (this.down('KeyA', 'ArrowLeft') ? 1 : 0);
     let y = (this.down('KeyW', 'ArrowUp') ? 1 : 0) - (this.down('KeyS', 'ArrowDown') ? 1 : 0);
-    if (!x && !y) ({ x, y } = this.pad.stick);
+    if (!x && !y) {
+      if (this.stickX || this.stickY) ({ x, y } = { x: this.stickX, y: this.stickY });
+      else ({ x, y } = this.pad.stick);
+    }
     const len = Math.hypot(x, y);
     return len > 1 ? { x: x / len, y: y / len } : { x, y };
   }

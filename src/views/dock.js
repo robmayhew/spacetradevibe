@@ -121,6 +121,7 @@ export class DockView {
 
     this.hud = new DockHUD(app.hud, {
       mode, station: system.name, pad: this.target.num,
+      party: app.party,
       onResume: () => this.setPaused(false),
     });
     if (mode === 'dock') {
