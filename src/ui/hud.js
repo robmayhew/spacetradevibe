@@ -69,7 +69,25 @@ export class TravelHUD {
         onWeapon?.(slot.dataset.w);
       });
     });
+    this.weaponsOpen = false;
+    this.onToggleWeapons = () => {
+      if (!document.body.classList.contains('mobile')) return;
+      this.setWeaponsOpen(!this.weaponsOpen);
+    };
+    this.onPointerDown = (e) => {
+      if (!this.weaponsOpen) return;
+      if (e.target.closest?.('.wslot')) return;
+      this.setWeaponsOpen(false);
+    };
+    document.addEventListener('txl-toggle-weapons', this.onToggleWeapons);
+    document.addEventListener('pointerdown', this.onPointerDown);
     this.cache = {};
+  }
+
+  setWeaponsOpen(open) {
+    this.weaponsOpen = !!open;
+    this.root.querySelector('.hud-bc')?.classList.toggle('open', this.weaponsOpen);
+    document.body.classList.toggle('weapons-open', this.weaponsOpen);
   }
 
   set(key, value, fn) {
@@ -129,6 +147,9 @@ export class TravelHUD {
   }
 
   destroy() {
+    document.removeEventListener('txl-toggle-weapons', this.onToggleWeapons);
+    document.removeEventListener('pointerdown', this.onPointerDown);
+    document.body.classList.remove('weapons-open');
     clearTimeout(this.bannerTimer);
     this.root.innerHTML = '';
   }

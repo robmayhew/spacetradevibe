@@ -212,7 +212,7 @@ export class StationScreen {
     this.root.innerHTML = `
       <header class="st-header">
         <div class="st-title">
-          <div class="eyebrow">Docked at · Tier ${diffBadge(here.tier)}</div>
+          <div class="eyebrow">${document.body.classList.contains('mobile') ? diffBadge(here.tier) : `Docked at · Tier ${diffBadge(here.tier)}`}</div>
           <h1>${here.name}</h1>
         </div>
         <div class="st-stats">
@@ -271,11 +271,13 @@ export class StationScreen {
       <div class="map-info panel">${this.mapHint()}</div>
       <div class="map-legend panel">
         <div class="legend-row">${Array.from({ length: 10 }, (_, i) => `<span style="background:${tierCss(i + 1)}">${i + 1}</span>`).join('')}</div>
-        <div class="muted small">Bright = visited · Dim = scanned · Hidden = uncharted</div>
-        <div class="muted small">Lane Scanner · ${scanRange(this.state)} jumps · Ring = contract, colored by danger</div>
+        ${document.body.classList.contains('mobile')
+          ? '<div class="muted small">Bright visited · dim scanned · ring = contract</div>'
+          : `<div class="muted small">Bright = visited · Dim = scanned · Hidden = uncharted</div>
+        <div class="muted small">Lane Scanner · ${scanRange(this.state)} jumps · Ring = contract, colored by danger</div>`}
         <div class="legend-actions">
-          <button class="btn small" data-act="here">Center on me</button>
-          <button class="btn small" data-act="fit">Show all</button>
+          <button class="btn small" data-act="here">${document.body.classList.contains('mobile') ? 'Center' : 'Center on me'}</button>
+          <button class="btn small" data-act="fit">${document.body.classList.contains('mobile') ? 'All' : 'Show all'}</button>
           <button class="btn small map-zoom" data-act="zoom-out" aria-label="Zoom out">−</button>
           <button class="btn small map-zoom" data-act="zoom-in" aria-label="Zoom in">+</button>
         </div>

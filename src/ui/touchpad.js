@@ -72,7 +72,14 @@ export class TouchPad {
       btn.addEventListener('pointercancel', cool);
       btn.addEventListener('pointerleave', cool);
     });
-    this.root.querySelectorAll('[data-hold], [data-tap], .touch-stick').forEach((el) => {
+    this.root.querySelectorAll('[data-toggle="weapons"]').forEach((btn) => {
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.dispatchEvent(new CustomEvent('txl-toggle-weapons'));
+      });
+    });
+    this.root.querySelectorAll('[data-hold], [data-tap], [data-toggle], .touch-stick').forEach((el) => {
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     });
   }
