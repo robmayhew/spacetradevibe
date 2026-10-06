@@ -1,6 +1,6 @@
 import { generateGalaxy } from './galaxy.js';
 import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave, paceForBoard, formatPace, recordTerminusClear, formatHeat } from './state.js';
+import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave, formatPace, recordTerminusClear, formatHeat } from './state.js';
 import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
@@ -20,9 +20,8 @@ import {
   MIN_TIME_MS,
   runScore,
   saveCallsign,
-  submitRun,
+  postRun,
   uniqueCallsign,
-  BOARD_SEASON,
 } from './score.js';
 import { VERSION } from './changelog.js';
 import { shouldShowWhatsNew } from './prefs.js';
@@ -454,23 +453,8 @@ export class Game {
     status.className = 'submit-status muted small';
     try {
       saveCallsign(callsign);
-      const data = await submitRun({
-        run_id: s.runId,
-        callsign,
-        score: score.total,
-        time_ms: Math.round(s.runMs),
-        earned: s.stats.earned,
-        kills: s.stats.kills,
-        bosses: s.stats.bosses,
-        deaths: s.stats.deaths,
-        deliveries: s.stats.deliveries,
-        seed: s.seed,
-        status: 'done',
-        paced: s.paced !== false,
-        credits: Math.max(0, Math.round(s.credits || 0)),
-        pace: paceForBoard(s),
-        season: BOARD_SEASON,
-      });
+      s.callsign = callsign;
+      const data = await postRun(s, 'done', { callsign });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
     } catch (err) {
@@ -488,24 +472,7 @@ export class Game {
     if (!hasRunClock(s) || s.won || s.cheated) return;
     const callsign = (s.callsign || loadCallsign() || ensureCallsign()).trim();
     if (!CALLSIGN_RE.test(callsign)) return;
-    const score = runScore(s.stats);
-    submitRun({
-      run_id: s.runId,
-      callsign,
-      score: score.total,
-      time_ms: Math.round(s.runMs),
-      earned: s.stats.earned,
-      kills: s.stats.kills,
-      bosses: s.stats.bosses,
-      deaths: s.stats.deaths,
-      deliveries: s.stats.deliveries,
-      seed: s.seed,
-      status: 'live',
-      paced: s.paced !== false,
-      credits: Math.max(0, Math.round(s.credits || 0)),
-      pace: paceForBoard(s),
-      season: BOARD_SEASON,
-    }).catch(() => {});
+    postRun(s, 'live', { callsign }).catch(() => {});
   }
 }
 

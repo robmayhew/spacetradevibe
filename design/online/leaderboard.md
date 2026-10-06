@@ -16,7 +16,8 @@ Each save has a run clock. It only counts while you are playing: not on the main
 
 ## Posting
 
-- **Live rows:** your run is posted as **In flight** each time you return to a station and about once a minute while playing, using your menu callsign. The server ignores live updates that come less than 30 seconds apart.
+- **Live rows:** your run is posted as **In flight** each time you return to a station and about once a minute while playing, using your menu callsign. The server ignores live updates that come less than 30 seconds apart. The first post opens a server token that later posts must send back.
+- **Forgery:** a copied request cannot change the row, and a finished or voided run stays as it was. Earned credits, kills, and the total have to fit the time since the server opened the run. A modified client that keeps the token can still post inflated numbers up to that rate.
 - **Arrival:** from the [victory screen](../world/victory.md). Runs under 3 minutes, saves without a run clock, and test runs can't be posted. An arrived run can't be turned back into a live one.
-- The server allows at most 10 new runs or arrivals per IP address per hour.
+- The server allows at most 10 new runs or arrivals per IP address per hour. Behind Cloudflare the address is CF-Connecting-IP, and only when the socket address is inside Cloudflare's published ranges. Any other host uses the socket address, so a spoofed header does not count.
 - Under `npm run dev`, a local stand-in serves the board, so it works without the PHP API.

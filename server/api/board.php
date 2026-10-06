@@ -12,7 +12,6 @@ if ($sort === 'time') {
 }
 
 $pdo = db();
-ensure_runs_board($pdo);
 
 $season = board_season($_GET['season'] ?? 'beta');
 $where = "season = " . $pdo->quote($season) . " AND ($where)";

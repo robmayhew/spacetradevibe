@@ -1,0 +1,5 @@
+# Only the public API scripts are reachable. Deny backups, editor swap
+# files, dotfiles, and includes such as db.php and config.php.
+<FilesMatch "^(?!(board|score|feedback|party)\.php$).*$">
+  Require all denied
+</FilesMatch>

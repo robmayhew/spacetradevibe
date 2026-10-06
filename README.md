@@ -47,7 +47,7 @@ Progress auto-saves to `localStorage` each time you dock.
 
 ## Leaderboard on Plesk
 
-The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run is posted while the captain is still flying (`status: live`, shown as **In flight**) and again when they submit after delivering to the Terminus (`status: done`, **Arrived**). The Score tab includes open runs. The Time tab is finished runs only. In-flight rows drop off if they are not updated for 15 minutes.
+The Vite build is static files. The shared Terminus board is PHP + MariaDB on the same domain (`/api`). A run asks `/api/score.php` for a token when it opens, then posts while the captain is still flying (`status: live`, shown as **In flight**) and again when they submit after delivering to the Terminus (`status: done`, **Arrived**). Posts without that token are rejected. A finished or voided run is not rewritten, and a score has to fit how long the server has had the run open. The Score tab includes open runs. The Time tab is finished runs only. In-flight rows drop off if they are not updated for 15 minutes. Rate limits use CF-Connecting-IP only when the socket address is inside Cloudflare's published ranges. Any other host, including the dev copy, uses the socket address, so a spoofed header does not count.
 
 Bug reports and feature requests use the same database through [`server/api/feedback.php`](server/api/feedback.php). Feature requests are public in Settings; bug reports are stored only (read them in MariaDB). Set `feedback.hidden = 1` to pull a request off the public list.
 
@@ -55,7 +55,7 @@ Bug reports and feature requests use the same database through [`server/api/feed
 2. Copy [`server/api/config.example.php`](server/api/config.example.php) to `server/api/config.php` on the server and fill in those credentials. Keep `config.php` out of git.
 3. Build with `npm run build`. Upload `dist/` into the domain's document root, and upload `server/api/` to `httpdocs/api/` (include `feedback.php`).
 4. Confirm PHP 8.1 or newer is selected for the domain (the Plesk default on current installs).
-5. If this database already existed, also run the `ALTER TABLE` statements at the bottom of [`server/schema.sql`](server/schema.sql) (`runs.status` and `party_rooms.frame`), and create the `feedback` table from that file if it is missing.
+5. If this database already existed, run [`server/migrations.sql`](server/migrations.sql) once in MariaDB. Skip any statement that says the column or key already exists, and create the `feedback` table from [`server/schema.sql`](server/schema.sql) if it is missing. The API does not alter tables on request.
 
 No Node.js extension is required on the server. Local `npm run dev` still plays; the board and feedback panels explain they are offline until `/api` is on the same host. Escorts and feedback use an in-memory API during `npm run dev`, so a second tab at `/controller.html?room=CODE` can join locally.
 
@@ -68,4 +68,4 @@ The bottom-left QR (or the 5-character code) opens the escort page. Linked devic
 - **Phone:** virtual stick and fire button.
 - **Laptop:** the combat arena on that screen, **WASD / arrows** to move, **Space** to fire. Check **Use the on-screen stick** to join as a pad instead. The other machine must open the same origin (the deployed site, or the dev server via the host's LAN address). `localhost` on the captain's machine is not reachable from another laptop.
 
-After pulling this change on Plesk, run the `ALTER TABLE` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, create the `feedback` table if needed, upload [`server/api/party.php`](server/api/party.php), [`server/api/score.php`](server/api/score.php) / [`server/api/board.php`](server/api/board.php), and [`server/api/feedback.php`](server/api/feedback.php), and upload a fresh `dist/` that includes `controller.html`. Stick, fire, and combat frames go through `/api`. Each escort gets a distinct ship color.
+After pulling this change on Plesk, run the `ALTER TABLE` statements in [`server/schema.sql`](server/schema.sql) on the same MariaDB database, create the `feedback` table if needed, upload [`server/api/party.php`](server/api/party.php), [`server/api/score.php`](server/api/score.php) / [`server/api/board.php`](server/api/board.php), and [`server/api/feedback.php`](server/api/feedback.php), and upload a fresh `dist/` that includes `controller.html`. Stick, fire, and combat frames go through `/api`, with per-address and per-token limits so a live crew still fits and a flood does not. Signal and frame bodies are capped at 8 KB. Stale signals are deleted as rooms are used, not only when a room is created. Each escort gets a distinct ship color.
