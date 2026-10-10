@@ -1,5 +1,5 @@
 import { SCORE } from './data.js';
-import { paceForBoard } from './state.js';
+import { load, paceForBoard, save } from './state.js';
 
 const CALLSIGN_KEY = 'txl-trader-callsign';
 const API = '/api';
@@ -93,6 +93,65 @@ export async function fetchBoard(sort = 'score') {
   return res.json();
 }
 
+function newNonce() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `n${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+}
+
+const runQueue = new Map();
+
+function enqueueRun(runId, fn) {
+  const prev = runQueue.get(runId) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  runQueue.set(runId, run.then(() => {}, () => {}));
+  return run;
+}
+
+function persistIfActive(state) {
+  try {
+    const cur = load();
+    if (cur && cur.runId === state.runId) save(state);
+  } catch {
+    // storage unavailable
+  }
+}
+
+export async function ensureRunOpen(state) {
+  if (!state?.runId || state.runToken) return !!state?.runToken;
+  const res = await fetch(`${API}/score.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'start', run_id: state.runId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) {
+    const err = new Error(data.error || 'offline');
+    err.status = res.status;
+    throw err;
+  }
+  state.runToken = data.token;
+  persistIfActive(state);
+  return true;
+}
+
+export function postRun(state, status, overrides = {}) {
+  return enqueueRun(state?.runId || '', async () => {
+    await ensureRunOpen(state);
+    const payload = {
+      ...runPayload(state, status),
+      ...overrides,
+      token: state.runToken,
+      nonce: newNonce(),
+    };
+    if (!CALLSIGN_RE.test(payload.callsign)) {
+      const err = new Error('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
+      err.status = 400;
+      throw err;
+    }
+    return submitRun(payload);
+  });
+}
+
 export async function submitRun(payload) {
   const res = await fetch(`${API}/score.php`, {
     method: 'POST',
@@ -133,10 +192,10 @@ function runPayload(state, status) {
 
 export async function abandonRun(state) {
   if (!hasRunClock(state) || state.won || state.cheated) return;
-  const payload = runPayload(state, 'void');
-  if (!CALLSIGN_RE.test(payload.callsign)) return;
+  const callsign = String(state.callsign || loadCallsign() || '').trim();
+  if (!CALLSIGN_RE.test(callsign)) return;
   try {
-    await submitRun(payload);
+    await postRun(state, 'void');
   } catch {
     // board may be offline; the local save is still replaced
   }

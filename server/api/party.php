@@ -2,20 +2,29 @@
 
 require __DIR__ . '/db.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    json_error(405, 'POST a party action.');
+if (!defined('TXL_API_EMBED')) {
+    party_http_main();
 }
 
-$raw = file_get_contents('php://input');
-$body = json_decode($raw, true);
-if (!is_array($body)) {
-    json_error(400, 'Expected JSON.');
+function party_http_main(): void {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        json_error(405, 'POST a party action.');
+    }
+    $raw = file_get_contents('php://input');
+    if (!is_string($raw) || strlen($raw) > 16384) {
+        json_error(413, 'Request is too large.');
+    }
+    $body = json_decode($raw, true);
+    if (!is_array($body)) {
+        json_error(400, 'Expected JSON.');
+    }
+    $action = (string) ($body['action'] ?? '');
+    $pdo = db();
+    party_dispatch($pdo, $action, $body);
 }
 
-$action = (string) ($body['action'] ?? '');
-$pdo = db();
-
-switch ($action) {
+function party_dispatch(PDO $pdo, string $action, array $body): void {
+    switch ($action) {
     case 'create':
         party_rate($pdo, 200);
         json_out(party_create($pdo));
@@ -38,6 +47,7 @@ switch ($action) {
         json_out(party_frame($pdo, $body));
     default:
         json_error(400, 'Unknown action.');
+    }
 }
 
 function party_alphabet(): string {
@@ -81,6 +91,44 @@ function party_rate(PDO $pdo, int $max): void {
         json_error(429, 'Too many party requests from this address. Try again later.');
     }
     $pdo->prepare('INSERT INTO rate_hits (ip) VALUES (?)')->execute([$ip]);
+}
+
+// window seconds, max per token, max per IP.
+// Host polls at 10 Hz and sends vitals at 5 Hz. An escort sends the pad at about 12 Hz and may poll at 10 Hz.
+// A few devices on one address still fit. A flood does not.
+function party_action_limits(): array {
+    return [
+        'input' => [10, 200, 800],
+        'poll' => [10, 200, 800],
+        'vitals' => [10, 120, 300],
+        'frame' => [10, 200, 800],
+        'signal' => [60, 400, 800],
+        'leave' => [60, 30, 60],
+        'drop' => [60, 30, 60],
+    ];
+}
+
+function party_guard_ip(PDO $pdo, string $action): void {
+    party_maybe_prune($pdo);
+    $lim = party_action_limits()[$action] ?? null;
+    if (!$lim) return;
+    rate_bucket_hit($pdo, 'p-' . $action . '-ip', client_ip(), $lim[0], $lim[2], 'Too many party requests. Try again in a moment.');
+}
+
+function party_guard_token(PDO $pdo, string $action, string $token): void {
+    $lim = party_action_limits()[$action] ?? null;
+    if (!$lim || $token === '') return;
+    rate_bucket_hit($pdo, 'p-' . $action . '-tk', hash('sha256', $token), $lim[0], $lim[1], 'Too many party requests. Try again in a moment.');
+}
+
+function party_maybe_prune(PDO $pdo): void {
+    if (function_exists('apcu_add')) {
+        if (!apcu_add('txl_party_prune', 1, 30)) return;
+        party_prune($pdo);
+        return;
+    }
+    if (random_int(1, 200) !== 1) return;
+    party_prune($pdo);
 }
 
 function party_create(PDO $pdo): array {
@@ -263,20 +311,22 @@ function escort_status(array $who, array $row, ?array $brief): array {
 }
 
 function party_input(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'input');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'input', $token);
     if ($who['role'] !== 'escort') json_error(403, 'Only an escort can send the pad.');
     $mx = clamp_axis($body['mx'] ?? 0);
     $my = clamp_axis($body['my'] ?? 0);
     $fire = !empty($body['fire']) ? 1 : 0;
-    $st = $pdo->prepare('UPDATE party_live SET mx = ?, my = ?, fire = ?, updated_at = NOW() WHERE peer = ? AND room = ?');
-    $st->execute([$mx, $my, $fire, $who['peer'], $code]);
-    if ($st->rowCount() === 0) {
-        $pdo->prepare('INSERT INTO party_live (peer, room, mx, my, fire, updated_at) VALUES (?, ?, ?, ?, ?, NOW())')
-            ->execute([$who['peer'], $code, $mx, $my, $fire]);
-    }
+    // DATETIME is second precision, so a held stick repeats the same row in one second.
+    // An UPDATE then reports zero rows and a follow-up INSERT hits the primary key.
+    $pdo->prepare(
+        'INSERT INTO party_live (peer, room, mx, my, fire, updated_at) VALUES (?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE mx = VALUES(mx), my = VALUES(my), fire = VALUES(fire), updated_at = NOW()'
+    )->execute([$who['peer'], $code, $mx, $my, $fire]);
     $live = $pdo->prepare('SELECT hull, max_hull, mode FROM party_live WHERE peer = ? AND room = ?');
     $live->execute([$who['peer'], $code]);
     $row = $live->fetch() ?: [];
@@ -284,10 +334,12 @@ function party_input(PDO $pdo, array $body): array {
 }
 
 function party_vitals(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'vitals');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'vitals', $token);
     if ($who['role'] !== 'host') json_error(403, 'Only the host can send vitals.');
     $mode = (string) ($body['mode'] ?? 'wait');
     if ($mode !== 'travel') $mode = 'wait';
@@ -329,10 +381,12 @@ function party_vitals(PDO $pdo, array $body): array {
 }
 
 function party_poll(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'poll');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'poll', $token);
     if ($who['role'] === 'host') {
         $room = drop_silent_escorts($pdo, $room);
         $liveSt = $pdo->prepare('SELECT peer, mx, my, fire, hull, max_hull, mode, UNIX_TIMESTAMP(updated_at) AS updated_unix FROM party_live WHERE room = ?');
@@ -366,10 +420,12 @@ function party_poll(PDO $pdo, array $body): array {
 }
 
 function party_leave(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'leave');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'leave', $token);
     if ($who['role'] === 'host') {
         $pdo->prepare('DELETE FROM party_signals WHERE room = ?')->execute([$code]);
         delete_live($pdo, $code);
@@ -383,10 +439,12 @@ function party_leave(PDO $pdo, array $body): array {
 }
 
 function party_drop(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'drop');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'drop', $token);
     if ($who['role'] !== 'host') json_error(403, 'Only the host can drop an escort.');
     $peer = strtoupper(trim((string) ($body['peer'] ?? '')));
     $escorts = array_values(array_filter($room['escorts'], fn($e) => $e['id'] !== $peer));
@@ -396,10 +454,12 @@ function party_drop(PDO $pdo, array $body): array {
 }
 
 function party_frame(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'frame');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code, false);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'frame', $token);
     if (array_key_exists('frame', $body)) {
         if ($who['role'] !== 'host') json_error(403, 'Only the host can send a frame.');
         if ($body['frame'] === null) {
@@ -407,7 +467,7 @@ function party_frame(PDO $pdo, array $body): array {
             return ['ok' => true];
         }
         $json = json_encode($body['frame']);
-        if ($json === false || strlen($json) > 24576) {
+        if ($json === false || strlen($json) > 8192) {
             json_error(400, 'Frame is too large.');
         }
         $pdo->prepare('UPDATE party_rooms SET frame = ?, touched_at = NOW() WHERE code = ?')->execute([$json, $code]);
@@ -427,10 +487,12 @@ function party_read_frame(PDO $pdo, string $code): ?array {
 }
 
 function party_signal(PDO $pdo, array $body): array {
+    party_guard_ip($pdo, 'signal');
     $code = room_code($body);
     $token = (string) ($body['token'] ?? '');
     $room = load_room($pdo, $code);
     $who = auth_room($room, $token);
+    party_guard_token($pdo, 'signal', $token);
     $kind = (string) ($body['kind'] ?? '');
     if (!in_array($kind, ['offer', 'answer', 'ice'], true)) {
         json_error(400, 'Invalid signal.');
@@ -441,7 +503,7 @@ function party_signal(PDO $pdo, array $body): array {
     }
     $payload = $body['payload'] ?? null;
     $json = json_encode($payload);
-    if ($json === false || strlen($json) > 16384) {
+    if ($json === false || strlen($json) > 8192) {
         json_error(400, 'Signal is too large.');
     }
     $pdo->prepare('INSERT INTO party_signals (room, from_peer, to_peer, kind, payload) VALUES (?, ?, ?, ?, ?)')

@@ -7,4 +7,6 @@ return [
     'name' => 'txl_trader',
     'user' => 'txl_trader',
     'pass' => 'change-me',
+    // Optional. Unset uses the Cloudflare ranges published in db.php.
+    // 'cloudflare_cidrs' => ['173.245.48.0/20'],
 ];

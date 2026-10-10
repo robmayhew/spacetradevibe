@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS party_signals (
   kind VARCHAR(16) NOT NULL,
   payload TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY room_id (room, id)
+  KEY room_id (room, id),
+  KEY created_at (created_at)
 );
 
 CREATE TABLE IF NOT EXISTS party_live (
@@ -79,8 +80,21 @@ CREATE TABLE IF NOT EXISTS feedback (
   KEY ip_created (ip, created_at)
 );
 
--- Existing Plesk DBs: run these after pull if the columns are missing.
--- ALTER TABLE party_rooms ADD COLUMN frame MEDIUMTEXT NULL;
--- ALTER TABLE runs ADD COLUMN paced TINYINT UNSIGNED NOT NULL DEFAULT 1;
--- ALTER TABLE runs ADD KEY status_updated (status, updated_at);
--- CREATE TABLE feedback ... (see CREATE TABLE above if the table is missing).
+-- Existing Plesk DBs: run server/migrations.sql once. Skip any ALTER that
+-- reports the column or key is already present. Fresh installs use this file only.
+
+CREATE TABLE IF NOT EXISTS run_auth (
+  run_id CHAR(36) NOT NULL PRIMARY KEY,
+  token_hash VARCHAR(64) NOT NULL,
+  started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_nonce VARCHAR(64) NULL,
+  last_hash VARCHAR(64) NULL
+);
+
+CREATE TABLE IF NOT EXISTS rate_buckets (
+  scope VARCHAR(24) NOT NULL,
+  subject VARCHAR(64) NOT NULL,
+  bucket INT UNSIGNED NOT NULL,
+  hits INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (scope, subject, bucket)
+);

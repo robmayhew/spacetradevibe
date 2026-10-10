@@ -18,6 +18,17 @@ function now() {
   return Date.now();
 }
 
+function boardSeason(raw) {
+  if (typeof raw !== 'string') {
+    const err = new Error('Invalid season.');
+    err.status = 400;
+    throw err;
+  }
+  const s = raw.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!s || s.length > 16) return 'beta';
+  return s;
+}
+
 function nextColor(escorts) {
   return escorts.length % 4;
 }
@@ -247,7 +258,7 @@ export function createPartyStore() {
             return { ok: true };
           }
           const json = JSON.stringify(body.frame);
-          if (!json || json.length > 24576) {
+          if (!json || json.length > 8192) {
             const err = new Error('Frame is too large.');
             err.status = 400;
             throw err;
@@ -349,20 +360,37 @@ function readBody(req) {
 export function createBoardStore() {
   const runs = new Map();
   const liveWrite = new Map();
+  const auth = new Map();
+  const SCORE_SKEW_MS = 20000;
+  const SCORE_MIN_DONE_MS = 180000;
+  const SCORE_PER_MIN = 1200000;
+  const EARNED_PER_MIN = 1000000;
+  const KILLS_PER_MIN = 300;
+  const BOSSES_PER_MIN = 12;
+  const DEATHS_PER_MIN = 30;
+  const DELIVERIES_PER_MIN = 6;
+
+  function fail(status, message) {
+    const err = new Error(message);
+    err.status = status;
+    throw err;
+  }
 
   function intField(body, key, max) {
-    if (!(key in body) || !Number.isFinite(Number(body[key]))) {
-      const err = new Error(`Invalid ${key}.`);
-      err.status = 400;
-      throw err;
-    }
+    if (!(key in body) || !Number.isFinite(Number(body[key]))) fail(400, `Invalid ${key}.`);
     const n = Math.trunc(Number(body[key]));
-    if (n < 0 || n > max) {
-      const err = new Error(`Invalid ${key}.`);
-      err.status = 400;
-      throw err;
-    }
+    if (n < 0 || n > max) fail(400, `Invalid ${key}.`);
     return n;
+  }
+
+  function allow(elapsedMs, perMin) {
+    return Math.floor(perMin * (Math.max(0, elapsedMs) / 60000));
+  }
+
+  function runToken() {
+    const b = new Uint8Array(32);
+    crypto.getRandomValues(b);
+    return [...b].map((n) => n.toString(16).padStart(2, '0')).join('');
   }
 
   function ranks(score, timeMs, rows, season = 'beta') {
@@ -381,6 +409,14 @@ export function createBoardStore() {
       if (r.status === 'live') return sort !== 'time' && r.updated >= stale;
       return r.status === 'done';
     });
+  }
+
+  function payloadKey(norm) {
+    return JSON.stringify([
+      norm.callsign, norm.score, norm.time_ms, norm.earned, norm.kills, norm.bosses,
+      norm.deaths, norm.deliveries, norm.seed, norm.status, norm.paced, norm.credits,
+      norm.pace, norm.season, norm.nonce,
+    ]);
   }
 
   return {
@@ -405,82 +441,100 @@ export function createBoardStore() {
         })),
       };
     },
+    start(body) {
+      const runId = String(body.run_id || '');
+      if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runId)) {
+        fail(400, 'Invalid run.');
+      }
+      const prev = runs.get(runId);
+      if (prev && (prev.status === 'done' || prev.status === 'void')) fail(409, 'This run is already posted.');
+      const token = runToken();
+      const existing = auth.get(runId);
+      if (existing) {
+        if (existing.lastNonce) fail(409, 'This run has already started.');
+        existing.token = token;
+        return { ok: true, token };
+      }
+      auth.set(runId, { token, started: prev?.created || now(), lastNonce: '', lastHash: '' });
+      return { ok: true, token };
+    },
     submit(body) {
+      if (body?.action === 'start') return this.start(body);
       const callsign = String(body.callsign || '').trim();
       if (!/^[A-Za-z0-9][A-Za-z0-9 -]{0,14}[A-Za-z0-9]$/.test(callsign)) {
-        const err = new Error('Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
-        err.status = 400;
-        throw err;
+        fail(400, 'Callsign must be 2–16 letters, numbers, spaces, or hyphens.');
       }
       const runId = String(body.run_id || '');
       if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(runId)) {
-        const err = new Error('Invalid run.');
-        err.status = 400;
-        throw err;
+        fail(400, 'Invalid run.');
       }
+      const token = String(body.token || '').toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(token)) fail(403, 'Bad run token.');
+      const nonce = String(body.nonce || '');
+      if (!/^[A-Za-z0-9-]{8,64}$/.test(nonce)) fail(400, 'Invalid nonce.');
       const score = Math.trunc(Number(body.score ?? 0));
-      if (!Number.isInteger(score) || score < -10000000 || score >= 50000000) {
-        const err = new Error('Invalid score.');
-        err.status = 400;
-        throw err;
-      }
+      if (!Number.isInteger(score) || score < -10000000 || score >= 50000000) fail(400, 'Invalid score.');
       const status = body.status === 'live' ? 'live' : body.status === 'void' ? 'void' : 'done';
       const timeMs = intField(body, 'time_ms', 7 * 24 * 60 * 60 * 1000);
-      if (status === 'done' && timeMs < 3 * 60 * 1000) {
-        const err = new Error('Runs under 3 minutes are not posted.');
-        err.status = 400;
-        throw err;
-      }
+      if (status === 'done' && timeMs < SCORE_MIN_DONE_MS) fail(400, 'Runs under 3 minutes are not posted.');
       const earned = intField(body, 'earned', 49999999);
       const kills = intField(body, 'kills', 100000);
       const bosses = intField(body, 'bosses', 1000);
       const deaths = intField(body, 'deaths', 1000);
       const deliveries = intField(body, 'deliveries', 10000);
       const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : 0;
-      const paced = body.paced === false || body.paced === 0 || body.paced === '0' ? false : true;
+      const paced = !(body.paced === false || body.paced === 0 || body.paced === '0' || body.paced === 'false');
       let credits = 0;
       if (body.credits != null) {
         credits = Math.trunc(Number(body.credits));
-        if (!Number.isInteger(credits) || credits < 0 || credits > 49999999) {
-          const err = new Error('Invalid credits.');
-          err.status = 400;
-          throw err;
-        }
+        if (!Number.isInteger(credits) || credits < 0 || credits > 49999999) fail(400, 'Invalid credits.');
       }
       let pace = 100;
       if (body.pace != null) {
         pace = Math.trunc(Number(body.pace));
-        if (!Number.isInteger(pace) || pace < 50 || pace > 200) {
-          const err = new Error('Invalid pace.');
-          err.status = 400;
-          throw err;
-        }
+        if (!Number.isInteger(pace) || pace < 50 || pace > 200) fail(400, 'Invalid pace.');
       }
-      const season = String(body.season || 'beta').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16) || 'beta';
+      const season = body.season == null || body.season === '' ? 'beta' : boardSeason(body.season);
       const expected = earned + kills * 50 + bosses * 2500 - deaths * 1000;
-      if (score !== expected) {
-        const err = new Error('Invalid score.');
-        err.status = 400;
-        throw err;
+      if (score !== expected) fail(400, 'Invalid score.');
+      if (credits > earned + 500) fail(400, 'Invalid credits.');
+      const norm = { callsign, score, timeMs, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season, nonce };
+      const gate = auth.get(runId);
+      if (!gate || gate.token !== token) fail(gate ? 403 : 403, gate ? 'Bad run token.' : 'Unknown run.');
+      const key = payloadKey(norm);
+      if (gate.lastNonce && gate.lastNonce === nonce) {
+        if (gate.lastHash === key) {
+          const prev = runs.get(runId);
+          return { ok: true, ...ranks(prev?.score ?? score, prev?.time_ms ?? timeMs, [...runs.values()], season) };
+        }
+        fail(409, 'This update was already posted.');
       }
       const prev = runs.get(runId);
-      if (prev?.status === 'done' && status === 'live') {
-        const err = new Error('This run has already arrived.');
-        err.status = 409;
-        throw err;
+      if (prev && (prev.status === 'done' || prev.status === 'void')) {
+        const same = (prev.status === 'void' && status === 'void')
+          || (prev.status === 'done' && status === 'done' && prev.score === score && prev.time_ms === timeMs);
+        if (same) return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || season) };
+        fail(409, 'This run is already posted.');
       }
-      if (prev?.status === 'void' || (prev?.status === 'done' && status === 'void')) {
-        return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || 'beta') };
+      const elapsedMs = now() - gate.started;
+      if (status === 'done' && elapsedMs + SCORE_SKEW_MS < SCORE_MIN_DONE_MS) {
+        fail(400, 'Runs under 3 minutes are not posted.');
       }
-      if (status === 'live' && prev) {
+      const tooHigh = 'Score is too high for how long this run has been open.';
+      if (earned > allow(elapsedMs, EARNED_PER_MIN) || kills > allow(elapsedMs, KILLS_PER_MIN)
+        || bosses > allow(elapsedMs, BOSSES_PER_MIN) || deaths > allow(elapsedMs, DEATHS_PER_MIN)
+        || deliveries > allow(elapsedMs, DELIVERIES_PER_MIN) || score > allow(elapsedMs, SCORE_PER_MIN)) {
+        fail(400, tooHigh);
+      }
+      if (status === 'live' && prev?.status === 'live') {
         const last = liveWrite.get(runId) || 0;
         if (now() - last < 30000) {
-          return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || 'beta') };
+          return { ok: true, skipped: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || season) };
         }
+        if (timeMs <= prev.time_ms) fail(400, 'Stale run update.');
+      } else if (prev?.status === 'live' && timeMs < prev.time_ms) {
+        fail(400, 'Stale run update.');
       }
-      let nextStatus = status;
-      if (prev?.status === 'done') nextStatus = 'done';
-      else if (prev?.status === 'void') nextStatus = 'void';
       const row = {
         run_id: runId,
         callsign,
@@ -496,10 +550,13 @@ export function createBoardStore() {
         credits,
         pace,
         season,
-        status: nextStatus,
+        status,
+        created: prev?.created || gate.started,
         updated: now(),
       };
       runs.set(runId, row);
+      gate.lastNonce = nonce;
+      gate.lastHash = key;
       if (status === 'live') liveWrite.set(runId, now());
       return { ok: true, ...ranks(score, timeMs, [...runs.values()], season) };
     },
@@ -625,7 +682,8 @@ export function partyDevPlugin() {
       return;
     }
     const sort = queryOf(req).get('sort') === 'time' ? 'time' : 'score';
-    const season = (queryOf(req).get('season') || 'beta').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16) || 'beta';
+    const seasonQuery = queryOf(req).get('season');
+    const season = seasonQuery == null || seasonQuery === '' ? 'beta' : boardSeason(seasonQuery);
     jsonOk(res, board.board(sort, season));
   }
 
