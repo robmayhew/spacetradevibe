@@ -2,6 +2,7 @@ import { CALLSIGN_RE, randomCallsign } from '../score.js';
 import { VERSION, CHANGELOG, creditsHtml } from '../changelog.js';
 import { dismissWhatsNew } from '../prefs.js';
 import { MAX_SLOTS } from '../state.js';
+import { isFullscreen, toggleFullscreen } from '../mobile.js';
 
 export function renderMenu(root, {
   slots = [],
@@ -19,8 +20,10 @@ export function renderMenu(root, {
 }) {
   const filled = slots.filter((s) => !s.empty);
   const latest = CHANGELOG[0];
+  root._menuFullAbort?.abort();
   root.innerHTML = `
     <div class="menu">
+      <button type="button" class="btn small menu-full" data-act="fullscreen">${isFullscreen() ? 'Exit' : 'Fullscreen'}</button>
       <h1 class="logo">TXL<span>TRADER</span></h1>
       <p class="tagline">Trade. Upgrade. Carry the shutdown code to the KL9 core and free Mulerebs.</p>
       ${
@@ -86,8 +89,31 @@ export function renderMenu(root, {
     }
     location.href = `/controller.html?room=${encodeURIComponent(code)}`;
   });
-  root.querySelector('.menu').addEventListener('click', (e) => {
+  const fullBtn = root.querySelector('[data-act="fullscreen"]');
+  const fullAbort = new AbortController();
+  root._menuFullAbort = fullAbort;
+  const syncFull = () => {
+    if (fullBtn?.isConnected) fullBtn.textContent = isFullscreen() ? 'Exit' : 'Fullscreen';
+  };
+  document.addEventListener('fullscreenchange', syncFull, { signal: fullAbort.signal });
+  document.addEventListener('webkitfullscreenchange', syncFull, { signal: fullAbort.signal });
+  root.querySelector('.menu').addEventListener('click', async (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'fullscreen') {
+      const btn = e.target.closest('[data-act="fullscreen"]');
+      const ok = await toggleFullscreen();
+      if (!btn) return;
+      if (!ok) {
+        const prev = isFullscreen() ? 'Exit' : 'Fullscreen';
+        btn.textContent = 'Unavailable';
+        window.setTimeout(() => {
+          if (btn.isConnected) btn.textContent = isFullscreen() ? 'Exit' : prev;
+        }, 1400);
+        return;
+      }
+      syncFull();
+      return;
+    }
     if (act === 'continue') onContinue?.();
     if (act === 'pick') onPickSave?.(Number(e.target.closest('[data-act="pick"]').dataset.slot));
     if (act === 'delete-save') {

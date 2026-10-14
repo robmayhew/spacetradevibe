@@ -393,9 +393,18 @@ export function createBoardStore() {
     return [...b].map((n) => n.toString(16).padStart(2, '0')).join('');
   }
 
+  function closed(status) {
+    return status === 'done' || status === 'void' || status === 'lost';
+  }
+
   function ranks(score, timeMs, rows, season = 'beta') {
+    const stale = now() - 15 * 60 * 1000;
     const pool = rows.filter((r) => (r.season || 'beta') === season);
-    const rankScore = pool.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
+    const ranked = pool.filter((r) => {
+      if (r.status === 'done' || r.status === 'lost') return true;
+      return r.status === 'live' && r.updated >= stale;
+    });
+    const rankScore = ranked.filter((r) => r.score > score || (r.score === score && r.time_ms < timeMs)).length + 1;
     const finished = pool.filter((r) => r.status === 'done');
     const rankTime = finished.filter((r) => r.time_ms < timeMs || (r.time_ms === timeMs && r.score > score)).length + 1;
     return { rank_score: rankScore, rank_time: rankTime };
@@ -407,6 +416,7 @@ export function createBoardStore() {
       if ((r.season || 'beta') !== season) return false;
       if (r.status === 'void') return false;
       if (r.status === 'live') return sort !== 'time' && r.updated >= stale;
+      if (r.status === 'lost') return sort !== 'time';
       return r.status === 'done';
     });
   }
@@ -415,8 +425,14 @@ export function createBoardStore() {
     return JSON.stringify([
       norm.callsign, norm.score, norm.time_ms, norm.earned, norm.kills, norm.bosses,
       norm.deaths, norm.deliveries, norm.seed, norm.status, norm.paced, norm.credits,
-      norm.pace, norm.season, norm.nonce,
+      norm.pace, norm.season, norm.system, norm.rating, norm.visited, norm.deepest, norm.nonce,
     ]);
+  }
+
+  function boardStatus(status) {
+    if (status === 'live') return 'live';
+    if (status === 'lost') return 'lost';
+    return 'done';
   }
 
   return {
@@ -432,11 +448,19 @@ export function createBoardStore() {
           callsign: r.callsign,
           score: r.score,
           time_ms: r.time_ms,
-          status: r.status === 'live' ? 'live' : 'done',
+          status: boardStatus(r.status),
           paced: r.paced !== false,
           credits: r.credits || 0,
           pace: r.pace || 100,
           season: r.season || 'beta',
+          earned: r.earned || 0,
+          kills: r.kills || 0,
+          deaths: r.deaths || 0,
+          deliveries: r.deliveries || 0,
+          system: r.system || '',
+          rating: r.rating || 0,
+          visited: r.visited || 0,
+          deepest: r.deepest || 0,
           rank: i + 1,
         })),
       };
@@ -447,7 +471,7 @@ export function createBoardStore() {
         fail(400, 'Invalid run.');
       }
       const prev = runs.get(runId);
-      if (prev && (prev.status === 'done' || prev.status === 'void')) fail(409, 'This run is already posted.');
+      if (prev && closed(prev.status)) fail(409, 'This run is already posted.');
       const token = runToken();
       const existing = auth.get(runId);
       if (existing) {
@@ -474,7 +498,7 @@ export function createBoardStore() {
       if (!/^[A-Za-z0-9-]{8,64}$/.test(nonce)) fail(400, 'Invalid nonce.');
       const score = Math.trunc(Number(body.score ?? 0));
       if (!Number.isInteger(score) || score < -10000000 || score >= 50000000) fail(400, 'Invalid score.');
-      const status = body.status === 'live' ? 'live' : body.status === 'void' ? 'void' : 'done';
+      const status = body.status === 'live' ? 'live' : body.status === 'void' ? 'void' : body.status === 'lost' ? 'lost' : 'done';
       const timeMs = intField(body, 'time_ms', 7 * 24 * 60 * 60 * 1000);
       if (status === 'done' && timeMs < SCORE_MIN_DONE_MS) fail(400, 'Runs under 3 minutes are not posted.');
       const earned = intField(body, 'earned', 49999999);
@@ -498,9 +522,29 @@ export function createBoardStore() {
       const expected = earned + kills * 50 + bosses * 2500 - deaths * 1000;
       if (score !== expected) fail(400, 'Invalid score.');
       if (credits > earned + 500) fail(400, 'Invalid credits.');
-      const norm = { callsign, score, timeMs, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season, nonce };
+      let system = String(body.system || '').trim();
+      if (system.length > 48 || (system && !/^[A-Za-z0-9][A-Za-z0-9 .'-]{0,47}$/.test(system))) fail(400, 'Invalid system.');
+      let rating = 0;
+      if (body.rating != null) {
+        rating = Math.trunc(Number(body.rating));
+        if (!Number.isInteger(rating) || rating < 0 || rating > 10) fail(400, 'Invalid rating.');
+      }
+      let visited = 0;
+      if (body.visited != null) {
+        visited = Math.trunc(Number(body.visited));
+        if (!Number.isInteger(visited) || visited < 0 || visited > 1000) fail(400, 'Invalid visited.');
+      }
+      let deepest = 0;
+      if (body.deepest != null) {
+        deepest = Math.trunc(Number(body.deepest));
+        if (!Number.isInteger(deepest) || deepest < 0 || deepest > 10) fail(400, 'Invalid deepest.');
+      }
+      const norm = {
+        callsign, score, time_ms: timeMs, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season,
+        system, rating, visited, deepest, nonce,
+      };
       const gate = auth.get(runId);
-      if (!gate || gate.token !== token) fail(gate ? 403 : 403, gate ? 'Bad run token.' : 'Unknown run.');
+      if (!gate || gate.token !== token) fail(403, gate ? 'Bad run token.' : 'Unknown run.');
       const key = payloadKey(norm);
       if (gate.lastNonce && gate.lastNonce === nonce) {
         if (gate.lastHash === key) {
@@ -510,9 +554,9 @@ export function createBoardStore() {
         fail(409, 'This update was already posted.');
       }
       const prev = runs.get(runId);
-      if (prev && (prev.status === 'done' || prev.status === 'void')) {
+      if (prev && closed(prev.status)) {
         const same = (prev.status === 'void' && status === 'void')
-          || (prev.status === 'done' && status === 'done' && prev.score === score && prev.time_ms === timeMs);
+          || ((prev.status === 'done' || prev.status === 'lost') && prev.status === status && prev.score === score && prev.time_ms === timeMs);
         if (same) return { ok: true, ...ranks(prev.score, prev.time_ms, [...runs.values()], prev.season || season) };
         fail(409, 'This run is already posted.');
       }
@@ -551,6 +595,10 @@ export function createBoardStore() {
         pace,
         season,
         status,
+        system,
+        rating,
+        visited,
+        deepest,
         created: prev?.created || gate.started,
         updated: now(),
       };

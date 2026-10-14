@@ -38,6 +38,7 @@ export function newState(galaxy) {
     won: false,
     recentFlights: [],
     stats: { deliveries: 0, kills: 0, deaths: 0, earned: 0, bosses: 0, flights: 0 },
+    deepestRoute: 0,
     paced: paceMatchingEnabled(),
     paceLast: 1,
     paceAvg: 1,
@@ -101,8 +102,36 @@ export function repairCost(state) {
   return Math.ceil(missing * 50 * Math.pow(PAY_GROWTH, state.upgrades.hull - 1));
 }
 
+// Full rebuild fee. Callers decide whether the captain can pay.
 export function towFee(state, difficulty) {
-  return Math.min(state.credits, Math.round(40 * Math.pow(PAY_GROWTH, difficulty - 1)));
+  return Math.round(40 * Math.pow(PAY_GROWTH, difficulty - 1));
+}
+
+export function canAffordRepair(state) {
+  const cost = repairCost(state);
+  return cost === 0 || state.credits >= cost;
+}
+
+// Damaged hull: keep enough credits to cover the repair bill.
+export function canSpend(state, cost) {
+  if (cost == null || !Number.isFinite(cost) || cost < 0 || state.credits < cost) return false;
+  const rc = repairCost(state);
+  if (rc === 0) return true;
+  return state.credits - cost >= rc;
+}
+
+export function noteRouteDepth(state, difficulty) {
+  const d = Math.max(0, Math.min(10, Math.round(Number(difficulty) || 0)));
+  state.deepestRoute = Math.max(0, Math.round(Number(state.deepestRoute) || 0), d);
+}
+
+export function syncBoardMeta(state, galaxy) {
+  if (!state) return;
+  const sys = galaxy?.systems?.[state.current];
+  state.boardSystem = sys?.name ? String(sys.name).slice(0, 48) : '';
+  state.boardRating = shipRating(state);
+  state.boardVisited = Array.isArray(state.visited) ? state.visited.length : 0;
+  state.deepestRoute = Math.max(0, Math.min(10, Math.round(Number(state.deepestRoute) || 0)));
 }
 
 export function generateContracts(state, galaxy) {
@@ -164,7 +193,7 @@ export function weaponLevelCost(state, id) {
 
 export function buyWeaponLevel(state, id) {
   const cost = weaponLevelCost(state, id);
-  if (cost == null || state.credits < cost) return false;
+  if (cost == null || !canSpend(state, cost)) return false;
   state.credits -= cost;
   if (!state.weaponLevels) state.weaponLevels = {};
   state.weaponLevels[id] = weaponLevel(state, id) + 1;
@@ -209,7 +238,7 @@ export function escortUpgradeCost(state, key) {
 
 export function buyEscortUpgrade(state, key) {
   const cost = escortUpgradeCost(state, key);
-  if (cost == null || state.credits < cost) return false;
+  if (cost == null || !canSpend(state, cost)) return false;
   state.credits -= cost;
   if (!state.escort) state.escort = emptyEscort();
   state.escort[key] = escortLevel(state, key) + 1;
@@ -283,7 +312,7 @@ export function buyWeaponMod(state, id) {
   if (!hasWeapon(state, id)) return false;
   const level = weaponModLevel(state, id);
   const cost = weaponModCost(id, level);
-  if (cost == null || state.credits < cost) return false;
+  if (cost == null || !canSpend(state, cost)) return false;
   state.credits -= cost;
   state.weaponMods = { ...state.weaponMods, [id]: level + 1 };
   return true;
@@ -291,7 +320,7 @@ export function buyWeaponMod(state, id) {
 
 export function buyWeapon(state, id) {
   const w = WEAPONS[id];
-  if (!w || hasWeapon(state, id) || !hasWeaponUnlock(id) || state.credits < w.cost) return false;
+  if (!w || hasWeapon(state, id) || !hasWeaponUnlock(id) || !canSpend(state, w.cost)) return false;
   state.credits -= w.cost;
   state.weapons.push(id);
   if (!state.weaponLevels) state.weaponLevels = {};
@@ -403,7 +432,7 @@ export function paceForBoard(state) {
 
 export function buyUpgrade(state, key) {
   const cost = upgradeCost(key, state.upgrades[key]);
-  if (cost == null || state.credits < cost) return false;
+  if (cost == null || !canSpend(state, cost)) return false;
   const before = shipStats(state);
   state.credits -= cost;
   state.upgrades[key]++;

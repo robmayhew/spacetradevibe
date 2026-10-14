@@ -6,8 +6,7 @@ import { SHAPES, GLASS, ASTEROID_VARIANTS } from '../fx/shapes.js';
 import { PLAYER_COLOR, ESCORT_COLORS, createPlayerShip, createEscortShip } from '../fx/ship.js';
 import { ENEMIES, WEAPONS, WEAPON_ORDER, HP_GROWTH, DMG_GROWTH, PAY_GROWTH, DIFFICULTY_ADJUST, WEAPON_MODS, weaponLevelMult, weaponRateMult, canMountWeapon, MOUNT_RATE_MULT, MOUNT_DMG_MULT } from '../data.js';
 import { shipStats, weaponModLevel, pacePressure, extraMounts, weaponLevel, escortStats, primaryWeapons, recordPace, formatPace, heatMult, heatLevel } from '../state.js';
-import { paceMatchingEnabled } from '../prefs.js';
-import { shakeEnabled } from '../prefs.js';
+import { paceMatchingEnabled, shakeEnabled, autoFireEnabled, savePrefs } from '../prefs.js';
 import { TravelHUD } from '../ui/hud.js';
 import { WarpStreaks } from '../fx/warp.js';
 import { rand, randInt, pick, clamp, shuffle } from '../rng.js';
@@ -136,7 +135,7 @@ export class TravelView {
     this.kills = 0;
     this.bossKilled = false;
     this.shake = 0;
-    this.auto = false;
+    this.auto = autoFireEnabled();
     this.paused = false;
     this.done = false;
     this.infinite = !!contract.infinite;
@@ -152,6 +151,7 @@ export class TravelView {
       from, to, difficulty: this.d, owned: this.owned, mounts: this.mounts,
       pace: this.paceLabel,
       heat: this.heat,
+      auto: this.auto,
       party: app.party,
       onWeapon: (id) => {
         if (this.primaries.includes(id)) this.player.weapon = id;
@@ -453,7 +453,10 @@ export class TravelView {
         const dir = inp.hit('KeyE') ? 1 : -1;
         p.weapon = list[(i + dir + list.length) % list.length];
       }
-      if (inp.hit('KeyF')) this.auto = !this.auto;
+      if (inp.hit('KeyF')) {
+        this.auto = !this.auto;
+        savePrefs({ autoFire: this.auto });
+      }
     }
 
     p.cooldown -= dt;

@@ -1,10 +1,11 @@
 import { WEAPONS, WEAPON_ORDER } from '../data.js';
 import { tierCss } from '../views/starmap.js';
 import { copyRoomCode, escortInviteHtml } from '../mobile.js';
+import { autoFireEnabled } from '../prefs.js';
 
 // DOM overlay for the travel screen.
 export class TravelHUD {
-  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, onResume, onRetreat, party, onWeapon }) {
+  constructor(root, { from, to, difficulty, owned, mounts = [], pace = '×1.00', heat = 0, auto = autoFireEnabled(), onResume, onRetreat, party, onWeapon }) {
     this.root = root;
     this.party = party;
     root.innerHTML = `
@@ -32,7 +33,7 @@ export class TravelHUD {
           }).join('')}
           <div class="mount-row">${(mounts || []).map((id) => `<span class="mount-pip" data-m="${id}" style="--c:#${WEAPONS[id].color.toString(16).padStart(6, '0')}">${WEAPONS[id].name}</span>`).join('')}</div>
         </div>
-          <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">OFF</b> · 1-8 / Q E weapons · Esc pause</div>
+          <div class="hud-bl with-party">WASD / Arrows move · Space fire · F auto-fire <b class="auto-v">${auto ? 'ON' : 'OFF'}</b> · 1-8 / Q E weapons · Esc pause</div>
         <div class="banner"></div>
         <div class="pause-overlay hidden">
           <div class="panel">
