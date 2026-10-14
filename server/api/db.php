@@ -49,6 +49,27 @@ function json_error(int $status, string $message): void {
     json_out(['error' => $message], $status);
 }
 
+function ensure_runs_board_meta(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    $alters = [
+        'ALTER TABLE runs ADD COLUMN system_name VARCHAR(48) NOT NULL DEFAULT \'\'',
+        'ALTER TABLE runs ADD COLUMN ship_rating TINYINT UNSIGNED NOT NULL DEFAULT 0',
+        'ALTER TABLE runs ADD COLUMN visited SMALLINT UNSIGNED NOT NULL DEFAULT 0',
+        'ALTER TABLE runs ADD COLUMN deepest TINYINT UNSIGNED NOT NULL DEFAULT 0',
+    ];
+    foreach ($alters as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $e) {
+            // column already exists
+        }
+    }
+}
+
 function board_season($raw): string {
     if (!is_string($raw)) {
         json_error(400, 'Invalid season.');

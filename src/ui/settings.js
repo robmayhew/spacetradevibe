@@ -5,6 +5,7 @@ import { abandonRun, CALLSIGN_RE, ensureCallsign } from '../score.js';
 import { clearSave, listSlots, peekSlot, load, save } from '../state.js';
 import { wikiHtml } from './wiki.js';
 import { startPreviews } from './preview.js';
+import { copyRoomCode, isFullscreen, toggleFullscreen } from '../mobile.js';
 
 const PANELS = {
   hub: 'Settings',
@@ -96,12 +97,17 @@ function panelBody(panel, { audio, slots, party, wikiSection }) {
   }
   if (panel === 'display') {
     const prefs = loadPrefs();
-    const full = !!document.fullscreenElement;
+    const full = isFullscreen();
     return `<div class="panel settings-panel">
       <div class="settings-row">
         <span>Screen shake</span>
         <button class="btn small" data-act="shake">Shake: ${prefs.shake ? 'On' : 'Off'}</button>
       </div>
+      <div class="settings-row">
+        <span>Autofire</span>
+        <button class="btn small" data-act="autofire">Autofire: ${prefs.autoFire ? 'On' : 'Off'}</button>
+      </div>
+      <p class="muted small">When on, each flight starts with autofire already armed. <kbd>F</kbd> or gamepad <kbd>X</kbd> still toggles it.</p>
       <div class="settings-row">
         <span>Fullscreen</span>
         <button class="btn small" data-act="fullscreen">${full ? 'Exit fullscreen' : 'Enter fullscreen'}</button>
@@ -123,7 +129,9 @@ function panelBody(panel, { audio, slots, party, wikiSection }) {
     const qr = snap.qrSrc
       ? `<img class="settings-qr" src="${escapeAttr(snap.qrSrc)}" alt="Join QR">`
       : '';
-    const code = snap.room ? `<div class="party-code">${escapeHtml(snap.room)}</div>` : '';
+    const code = snap.room
+      ? `<div class="party-code">${escapeHtml(snap.room)}</div><button type="button" class="btn small" data-act="copy-room">Copy link</button>`
+      : '';
     const crew = snap.crewHtml
       ? `<ul class="party-crew settings-crew">${snap.crewHtml}</ul>`
       : '';
@@ -208,7 +216,7 @@ function panelBody(panel, { audio, slots, party, wikiSection }) {
   </div>`;
 }
 
-function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSaveCleared, onQrLock }) {
+function bind(root, { audio, party, panel, setPanel, setWiki, refreshSave, onBack, onSaveCleared, onQrLock }) {
   const menu = root.querySelector('.menu');
   menu.addEventListener('click', async (e) => {
     const wiki = e.target.closest('[data-wiki]');
@@ -244,6 +252,12 @@ function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSa
       e.target.closest('[data-act="shake"]').textContent = `Shake: ${next ? 'On' : 'Off'}`;
       return;
     }
+    if (act === 'autofire') {
+      const next = !loadPrefs().autoFire;
+      savePrefs({ autoFire: next });
+      e.target.closest('[data-act="autofire"]').textContent = `Autofire: ${next ? 'On' : 'Off'}`;
+      return;
+    }
     if (act === 'pace') {
       const next = !loadPrefs().paceMatching;
       savePrefs({ paceMatching: next });
@@ -255,6 +269,10 @@ function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSa
       e.target.closest('[data-act="pace"]').textContent = `Pace matching: ${next ? 'On' : 'Off'}`;
       return;
     }
+    if (act === 'copy-room') {
+      copyRoomCode(party, e.target.closest('[data-act="copy-room"]'));
+      return;
+    }
     if (act === 'qr-lock') {
       const next = !loadPrefs().showQr;
       savePrefs({ showQr: next });
@@ -263,14 +281,9 @@ function bind(root, { audio, panel, setPanel, setWiki, refreshSave, onBack, onSa
       return;
     }
     if (act === 'fullscreen') {
-      try {
-        if (document.fullscreenElement) await document.exitFullscreen();
-        else await document.documentElement.requestFullscreen();
-      } catch {
-        // browser may deny
-      }
       const btn = root.querySelector('[data-act="fullscreen"]');
-      if (btn) btn.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen';
+      await toggleFullscreen();
+      if (btn) btn.textContent = isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen';
       return;
     }
     if (act === 'delete-save') {

@@ -112,7 +112,7 @@ function rulesHtml() {
     </article>
     <article class="wiki-card">
       <div class="wiki-head"><h3>Lane Records · ${escapeHtml(BOARD_SEASON_LABEL)}</h3></div>
-      <p>Score is credits earned + ${SCORE.kill} per kill + ${SCORE.boss.toLocaleString()} per capital ship − ${SCORE.death.toLocaleString()} per ship lost. The board also shows leftover cash and average pace. Seasons keep ranks from mixing after balance changes. Runs under 3 minutes are not posted.</p>
+      <p>Score is credits earned + ${SCORE.kill} per kill + ${SCORE.boss.toLocaleString()} per capital ship − ${SCORE.death.toLocaleString()} per ship lost. The board shows deliveries, earned credits, cash left, last system, rating, systems visited, deepest route, kills, ships lost, and pace. Arrived runs need 3 minutes. Lost runs that could not pay repair or rebuild stay on the score board.</p>
     </article>
     <article class="wiki-card">
       <div class="wiki-head"><h3>Escorts</h3></div>

@@ -2,6 +2,7 @@ import QRCode from 'qrcode/lib/browser.js';
 import { partyPost } from './api.js';
 import { escortHex } from './colors.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
+import { copyRoomCode } from '../mobile.js';
 
 const ROOM_KEY = 'txl-party-host';
 
@@ -27,6 +28,7 @@ export class PartyHost {
         <div class="eyebrow">Escorts</div>
         <img class="party-qr hidden" alt="Join QR" />
         <div class="party-code"></div>
+        <button type="button" class="btn small party-copy hidden" data-act="copy-room">Copy link</button>
         <p class="muted small party-hint">Locked in Settings</p>
         <ul class="party-crew"></ul>
       </div>`;
@@ -34,8 +36,14 @@ export class PartyHost {
       panel: this.root.querySelector('.party-panel'),
       qr: this.root.querySelector('.party-qr'),
       code: this.root.querySelector('.party-code'),
+      copy: this.root.querySelector('.party-copy'),
       crew: this.root.querySelector('.party-crew'),
     };
+    this.el.panel.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act="copy-room"]');
+      if (!btn || !this.room) return;
+      copyRoomCode(this, btn);
+    });
   }
 
   snapshot() {
@@ -75,6 +83,7 @@ export class PartyHost {
       this.el.panel.classList.remove('hidden');
       this.el.qr.classList.add('hidden');
       this.el.code.textContent = '';
+      this.el.copy.classList.add('hidden');
       this.el.crew.innerHTML = `<li class="muted">${err.message || 'Escorts are offline.'}</li>`;
     }
   }
@@ -91,6 +100,7 @@ export class PartyHost {
       color: { dark: '#1a1c1f', light: '#ddd6c8' },
     });
     this.el.code.textContent = this.room;
+    this.el.copy.classList.remove('hidden');
     this.el.panel.classList.remove('hidden');
     document.body.classList.add('has-party');
     this.setQrVisible(loadPrefs().showQr);

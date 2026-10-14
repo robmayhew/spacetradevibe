@@ -171,6 +171,11 @@ export async function submitRun(payload) {
 function runPayload(state, status) {
   const score = runScore(state.stats);
   const callsign = String(state.callsign || loadCallsign() || '').trim();
+  const visited = Number.isFinite(Number(state.boardVisited))
+    ? Math.round(Number(state.boardVisited))
+    : Array.isArray(state.visited)
+    ? state.visited.length
+    : 0;
   return {
     run_id: state.runId,
     callsign,
@@ -187,11 +192,15 @@ function runPayload(state, status) {
     credits: Math.max(0, Math.round(Number(state.credits) || 0)),
     pace: paceForBoard(state),
     season: BOARD_SEASON,
+    system: String(state.boardSystem || '').slice(0, 48),
+    rating: Math.max(0, Math.min(10, Math.round(Number(state.boardRating) || 0))),
+    visited: Math.max(0, Math.min(1000, visited)),
+    deepest: Math.max(0, Math.min(10, Math.round(Number(state.deepestRoute) || 0))),
   };
 }
 
 export async function abandonRun(state) {
-  if (!hasRunClock(state) || state.won || state.cheated) return;
+  if (!hasRunClock(state) || state.won || state.lost || state.cheated) return;
   const callsign = String(state.callsign || loadCallsign() || '').trim();
   if (!CALLSIGN_RE.test(callsign)) return;
   try {

@@ -3,7 +3,7 @@ import {
   shipStats, shipRating, routeDanger, upgradeCost, repairCost, repair, buyUpgrade, buyWeapon, hasWeapon, save, selectShip,
   extraMountSlots, extraMounts, weaponLevel, weaponLevelCost, buyWeaponLevel, setMount, weaponTuneStat,
   escortLevel, escortUpgradeCost, buyEscortUpgrade, pacePressure, formatPace, formatHeat,
-  weaponModLevel, weaponModCost, buyWeaponMod,
+  weaponModLevel, weaponModCost, buyWeaponMod, canSpend, canAffordRepair,
 } from '../state.js';
 import { paceMatchingEnabled } from '../prefs.js';
 import { hasShipUnlock, hasWeaponUnlock, shipFeel } from '../achievements.js';
@@ -220,7 +220,6 @@ export class StationScreen {
           <div class="stat hull-stat">
             <label>Hull ${fmt(s.hull)}/${fmt(stats.maxHull)}</label>
             <div class="bar hull"><span class="${s.hull / stats.maxHull < 0.3 ? 'low' : ''}" style="width:${(100 * s.hull) / stats.maxHull}%"></span></div>
-            ${rc > 0 ? `<button class="btn small" data-act="repair" ${s.credits < rc ? 'disabled' : ''}>Repair · ${fmt(rc)} cr</button>` : '<span class="muted small">Fully repaired</span>'}
           </div>
           <div class="stat"><label>Ship rating</label><b class="rating">${rating}</b></div>
           <div class="stat"><label>Pace</label><b>${paceLabel}</b></div>
@@ -234,7 +233,7 @@ export class StationScreen {
           .map(([id, label]) => `<button class="tab ${this.tab === id ? 'active' : ''}" data-act="tab" data-id="${id}">${label}</button>`)
           .join('')}
       </nav>
-      <main class="tab-body tab-${this.tab}">${this.renderTab(stats, rating)}</main>
+      <main class="tab-body tab-${this.tab}">${this.tab === 'map' ? '' : this.renderRepairBay(stats)}${this.renderTab(stats, rating)}</main>
       <footer class="st-footer">${this.renderFooter(stats)}</footer>`;
 
     if (this.tab === 'map') {
@@ -315,6 +314,38 @@ export class StationScreen {
       ${route}`;
   }
 
+  renderRepairBay(stats) {
+    const s = this.state;
+    const rc = repairCost(s);
+    if (rc <= 0) {
+      return `<div class="repair-bay panel ok">
+        <div>
+          <div class="eyebrow">Station repair</div>
+          <h3>Hull is fully repaired</h3>
+          <p class="muted">Hull ${fmt(s.hull)} / ${fmt(stats.maxHull)}. You can spend credits freely.</p>
+        </div>
+      </div>`;
+    }
+    const afford = canAffordRepair(s);
+    return `<div class="repair-bay panel ${afford ? 'need' : 'broke'}">
+      <div>
+        <div class="eyebrow">Station repair</div>
+        <h3>Restore hull to full</h3>
+        <p>Hull ${fmt(s.hull)} / ${fmt(stats.maxHull)} · Repair costs <b>${fmt(rc)} cr</b>.</p>
+        ${
+          afford
+            ? '<p class="muted small">You can launch damaged, but purchases stay locked until you keep enough credits for this bill.</p>'
+            : '<p class="warn small">You cannot pay this bill. The run is over once you leave this report.</p>'
+        }
+      </div>
+      ${
+        afford
+          ? `<button class="btn primary" data-act="repair">Repair hull · ${fmt(rc)} cr</button>`
+          : '<button class="btn danger" disabled>Cannot repair</button>'
+      }
+    </div>`;
+  }
+
   renderContracts(stats, rating) {
     const s = this.state;
     if (!s.contracts.length) return '<p class="muted">No contracts available.</p>';
@@ -352,7 +383,7 @@ export class StationScreen {
     const lowHull = s.hull / stats.maxHull < 0.5;
     return `
       <div class="contracts">${cards}</div>
-      ${lowHull ? '<p class="warn center">⚠ Hull integrity is low. Consider repairing before launch.</p>' : ''}
+      ${lowHull ? '<p class="warn center">⚠ Hull integrity is low. Repair at the station bay above, or launch damaged.</p>' : ''}
       ${s.contracts.every((c) => c.difficulty > rating) ? '<p class="warn center">Every route from here is above your ship rating. Upgrade under Ship Systems, or risk it.</p>' : ''}`;
   }
 
@@ -375,7 +406,7 @@ export class StationScreen {
           <div class="u-level">Lv ${lvl} ${pips(lvl, def.max)}</div>
           <div class="u-stat">${cur}${next ? ` <span class="arrow">→</span> <b>${next}</b>` : ' <span class="muted">(max)</span>'}</div>
           ${cost != null
-            ? `<button class="btn ${s.credits >= cost ? 'primary' : ''}" data-act="upgrade" data-id="${key}" ${s.credits < cost ? 'disabled' : ''}>Upgrade · ${fmt(cost)} cr</button>`
+            ? `<button class="btn ${canSpend(s, cost) ? 'primary' : ''}" data-act="upgrade" data-id="${key}" ${canSpend(s, cost) ? '' : 'disabled'}>Upgrade · ${fmt(cost)} cr</button>`
             : '<button class="btn" disabled>Maxed</button>'}
         </div>`;
     }).join('');
@@ -405,9 +436,9 @@ export class StationScreen {
           ${!owned
             ? locked
               ? `<button class="btn" disabled>${w.unlock === 'nova' ? 'Locked · 75 kills' : 'Locked'}</button>`
-              : `<button class="btn ${s.credits >= w.cost ? 'primary' : ''}" data-act="buy" data-id="${id}" ${s.credits < w.cost ? 'disabled' : ''}>Buy · ${fmt(w.cost)} cr</button>`
+              : `<button class="btn ${canSpend(s, w.cost) ? 'primary' : ''}" data-act="buy" data-id="${id}" ${canSpend(s, w.cost) ? '' : 'disabled'}>Buy · ${fmt(w.cost)} cr</button>`
             : gcost != null
-              ? `<button class="btn ${s.credits >= gcost ? 'primary' : ''}" data-act="gun-up" data-id="${id}" ${s.credits < gcost ? 'disabled' : ''}>Tune · ${fmt(gcost)} cr</button>`
+              ? `<button class="btn ${canSpend(s, gcost) ? 'primary' : ''}" data-act="gun-up" data-id="${id}" ${canSpend(s, gcost) ? '' : 'disabled'}>Tune · ${fmt(gcost)} cr</button>`
               : '<button class="btn" disabled>Maxed</button>'}
           ${owned && WEAPON_MODS[id] ? this.weaponMod(id) : ''}
           ${w.kind === 'beam' ? '<p class="muted small">Ion Beam stays on the primary. Extra mounts cannot carry it.</p>' : ''}
@@ -428,7 +459,7 @@ export class StationScreen {
           <div class="u-level">Lv ${lvl} ${pips(lvl, def.max)}</div>
           <div class="u-stat">${cur}${next ? ` <span class="arrow">→</span> <b>${next}</b>` : ' <span class="muted">(max)</span>'}</div>
           ${cost != null
-            ? `<button class="btn ${s.credits >= cost ? 'primary' : ''}" data-act="escort" data-id="${key}" ${s.credits < cost ? 'disabled' : ''}>Upgrade · ${fmt(cost)} cr</button>`
+            ? `<button class="btn ${canSpend(s, cost) ? 'primary' : ''}" data-act="escort" data-id="${key}" ${canSpend(s, cost) ? '' : 'disabled'}>Upgrade · ${fmt(cost)} cr</button>`
             : '<button class="btn" disabled>Maxed</button>'}
         </div>`;
     }).join('');
@@ -492,7 +523,7 @@ export class StationScreen {
         <div class="u-stat">${cur}${next ? ` <span class="arrow">→</span> <b>${next}</b>` : ' <span class="muted">(max)</span>'}</div>
       </div>
       ${cost != null
-        ? `<button class="btn ${s.credits >= cost ? 'primary' : ''}" data-act="wmod" data-id="${id}" ${s.credits < cost ? 'disabled' : ''}>${u.name} · ${fmt(cost)} cr</button>`
+        ? `<button class="btn ${canSpend(s, cost) ? 'primary' : ''}" data-act="wmod" data-id="${id}" ${canSpend(s, cost) ? '' : 'disabled'}>${u.name} · ${fmt(cost)} cr</button>`
         : '<button class="btn" disabled>Maxed</button>'}`;
   }
 

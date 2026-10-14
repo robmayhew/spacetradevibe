@@ -1,3 +1,5 @@
+import { loadCallsign } from './score.js';
+
 const SHORT_SIDE = 540;
 
 export function isPhoneLayout() {
@@ -46,39 +48,77 @@ export function registerServiceWorker() {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
+export function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+export async function toggleFullscreen() {
+  const el = document.documentElement;
+  try {
+    if (isFullscreen()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (!exit) return false;
+      await exit.call(document);
+      return true;
+    }
+    const enter = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!enter) return false;
+    await enter.call(el);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function escortInviteHtml(party, extraClass = '') {
   const room = party?.room;
   if (!room) return '';
   return `<div class="escort-invite ${extraClass}">
     <span class="eyebrow">Escorts</span>
     <b class="invite-code">${room}</b>
-    <button type="button" class="btn small" data-act="copy-room">Copy code</button>
+    <button type="button" class="btn small" data-act="copy-room">Copy link</button>
   </div>`;
+}
+
+export function roomShareText(room) {
+  const code = String(room || '').trim().toUpperCase();
+  const url = `${location.origin}/controller.html?room=${encodeURIComponent(code)}`;
+  const name = loadCallsign().trim();
+  const lead = name
+    ? `${name} invited you to fly escort in TXL Trader.`
+    : 'You are invited to fly escort in TXL Trader.';
+  return `${lead}\nRoom code: ${code}\n${url}`;
+}
+
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    /* fall through */
+  }
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.left = '-9999px';
+  document.body.appendChild(field);
+  field.select();
+  try {
+    document.execCommand('copy');
+  } catch {
+    /* ignore */
+  }
+  field.remove();
 }
 
 export async function copyRoomCode(party, btn) {
   const room = party?.room;
   if (!room) return;
-  try {
-    await navigator.clipboard.writeText(room);
-  } catch {
-    const field = document.createElement('textarea');
-    field.value = room;
-    field.setAttribute('readonly', '');
-    field.style.position = 'fixed';
-    field.style.left = '-9999px';
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand('copy');
-    } catch {
-      /* ignore */
-    }
-    field.remove();
-  }
+  await writeClipboard(roomShareText(room));
   if (!btn) return;
   const prev = btn.textContent;
-  btn.textContent = 'Copied';
+  btn.textContent = 'Link copied';
   window.setTimeout(() => {
     if (btn.isConnected) btn.textContent = prev;
   }, 1400);

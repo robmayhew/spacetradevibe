@@ -9,6 +9,7 @@ const DEFAULTS = {
   muted: false,
   volume: 1,
   shake: true,
+  autoFire: false,
   paceMatching: true,
   showQr: false,
   seenVersion: null,
@@ -51,6 +52,7 @@ export function loadPrefs() {
     muted: !!merged.muted,
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
     shake: merged.shake !== false,
+    autoFire: !!merged.autoFire,
     paceMatching: merged.paceMatching !== false,
     showQr: !!merged.showQr,
     seenVersion: typeof merged.seenVersion === 'string' ? merged.seenVersion : null,
@@ -64,6 +66,7 @@ export function savePrefs(partial) {
   next.volume = Math.max(0, Math.min(1, Number(next.volume) || 0));
   next.muted = !!next.muted;
   next.shake = next.shake !== false;
+  next.autoFire = !!next.autoFire;
   next.paceMatching = next.paceMatching !== false;
   next.showQr = !!next.showQr;
   next.terminusWins = Math.max(0, Math.round(Number(next.terminusWins) || 0));
@@ -79,6 +82,10 @@ export function savePrefs(partial) {
 
 export function shakeEnabled() {
   return loadPrefs().shake;
+}
+
+export function autoFireEnabled() {
+  return loadPrefs().autoFire;
 }
 
 export function paceMatchingEnabled() {

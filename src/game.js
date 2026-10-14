@@ -1,6 +1,10 @@
 import { generateGalaxy } from './galaxy.js';
 import { SYSTEMS, WEAPON_ORDER, SCORE } from './data.js';
-import { newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot, writeActive, occupiedSlots, clearSave, formatPace, recordTerminusClear, formatHeat } from './state.js';
+import {
+  newState, generateContracts, shipStats, towFee, save, load, recordFlight, listSlots, freeSlotIndex, peekSlot,
+  writeActive, occupiedSlots, clearSave, formatPace, recordTerminusClear, formatHeat, repairCost, canAffordRepair,
+  noteRouteDepth, syncBoardMeta, shipRating,
+} from './state.js';
 import { checkAchievements } from './achievements.js';
 import { BackdropView } from './views/backdrop.js';
 import { StarMapView } from './views/starmap.js';
@@ -56,8 +60,8 @@ export class Game {
 
   tick(dt) {
     const s = this.state;
-    if (!s || s.won || !Number.isFinite(s.runMs)) return;
-    if (this.screen === 'menu' || this.screen === 'victory') return;
+    if (!s || s.won || s.lost || !Number.isFinite(s.runMs)) return;
+    if (this.screen === 'menu' || this.screen === 'victory' || this.screen === 'gameover') return;
     if (!this.windowFocused || document.hidden) return;
     if (this.app.view?.paused) return;
     s.runMs += dt * 1000;
@@ -227,10 +231,20 @@ export class Game {
   }
 
   showStation(report) {
+    const s = this.state;
+    if (s && !s.won && !s.lost && !canAffordRepair(s)) {
+      this.showGameOver({
+        reason: 'repair',
+        cost: repairCost(s),
+        note: 'Hull damage left a repair bill you could not pay.',
+      });
+      return;
+    }
     this.screen = 'station';
     this.station?.destroy();
     this.app.hud.innerHTML = '';
     setPlayPad(false);
+    syncBoardMeta(s, this.galaxy);
     this.station = new StationScreen(this, { report });
     this.pushLiveScore();
   }
@@ -239,6 +253,9 @@ export class Game {
   // the destination. Hull damage carries through all three.
   launch(contract) {
     const s = this.state;
+    noteRouteDepth(s, contract.difficulty);
+    syncBoardMeta(s, this.galaxy);
+    save(s);
     this.station.destroy();
     this.station = null;
     this.app.ui.innerHTML = '';
@@ -297,6 +314,7 @@ export class Game {
     s.weapon = r.weapon;
     s.stats.flights++;
     s.stats.kills += r.kills;
+    noteRouteDepth(s, contract.difficulty);
     recordFlight(s, r);
     let report;
 
@@ -334,6 +352,7 @@ export class Game {
         s.won = true;
         const unlocks = checkAchievements(s, r);
         generateContracts(s, this.galaxy);
+        syncBoardMeta(s, this.galaxy);
         save(s);
         this.showVictory(unlocks);
         return;
@@ -347,9 +366,22 @@ export class Game {
       };
     } else {
       const fee = towFee(s, contract.difficulty);
+      s.stats.deaths++;
+      if (s.credits < fee) {
+        s.hull = Math.max(1, Math.round(r.hull));
+        const unlocks = checkAchievements(s, r);
+        syncBoardMeta(s, this.galaxy);
+        save(s);
+        this.showGameOver({
+          reason: 'rebuild',
+          fee,
+          unlocks,
+          note: `Rebuild fee ${fmt(fee)} cr. You had ${fmt(s.credits)} cr left at ${origin.name}.`,
+        });
+        return;
+      }
       s.credits -= fee;
       s.hull = stats.maxHull;
-      s.stats.deaths++;
       report = {
         kind: 'danger',
         title: 'Ship destroyed',
@@ -369,7 +401,17 @@ export class Game {
       report.note = report.note ? `${report.note} ${extra}` : extra;
     }
     generateContracts(s, this.galaxy);
+    syncBoardMeta(s, this.galaxy);
     save(s);
+    if (!s.won && !canAffordRepair(s)) {
+      this.showGameOver({
+        reason: 'repair',
+        cost: repairCost(s),
+        unlocks,
+        note: report?.note || 'Hull damage left a repair bill you could not pay.',
+      });
+      return;
+    }
     this.showStation(report);
   }
 
@@ -454,6 +496,7 @@ export class Game {
     try {
       saveCallsign(callsign);
       s.callsign = callsign;
+      syncBoardMeta(s, this.galaxy);
       const data = await postRun(s, 'done', { callsign });
       status.innerHTML = `Posted. Score rank <b class="accent">#${data.rank_score}</b> · Time rank <b class="accent">#${data.rank_time}</b>`;
       status.className = 'submit-status small';
@@ -467,11 +510,118 @@ export class Game {
     }
   }
 
+  showGameOver({ reason = 'repair', fee = 0, cost = 0, note = '', unlocks = [] } = {}) {
+    const s = this.state;
+    if (!s) return this.showMenu();
+    this.station?.destroy();
+    this.station = null;
+    this.screen = 'gameover';
+    setPlayPad(false);
+    this.app.audio.play('deny');
+    this.backdrop.showShip = true;
+    this.app.setView(this.backdrop);
+    s.lost = true;
+    syncBoardMeta(s, this.galaxy);
+    save(s);
+    const score = runScore(s.stats);
+    const timed = hasRunClock(s);
+    const timeLabel = timed ? formatRunTime(s.runMs) : '—';
+    const callsign = (s.callsign || loadCallsign() || ensureCallsign()).trim();
+    const title = reason === 'rebuild' ? 'Ship lost' : 'Cannot repair';
+    const tag =
+      reason === 'rebuild'
+        ? 'The yards will not rebuild a wreck you cannot pay for. Your run ends here.'
+        : 'Station crews will not launch a cracked hull you cannot pay to restore. Your run ends here.';
+    this.app.ui.innerHTML = `
+      <div class="menu victory gameover">
+        <h1 class="logo">RUN<span>OVER</span></h1>
+        <p class="tagline">${tag}</p>
+        <div class="panel stats-panel">
+          <div class="r-line"><span>${title}</span><b class="warn">${reason === 'rebuild' ? `${fmt(fee)} cr rebuild` : `${fmt(cost)} cr repair`}</b></div>
+          <div class="r-line"><span>Last system</span><b>${escapeAttr(s.boardSystem || '—')}</b></div>
+          <div class="r-line"><span>Deliveries</span><b>${s.stats.deliveries}</b></div>
+          <div class="r-line"><span>Credits earned</span><b>${fmt(s.stats.earned)} cr</b></div>
+          <div class="r-line"><span>Credits on hand</span><b>${fmt(s.credits)} cr</b></div>
+          <div class="r-line"><span>Ship rating</span><b>${shipRating(s)}</b></div>
+          <div class="r-line"><span>Deepest route</span><b>${Math.max(0, Math.round(Number(s.deepestRoute) || 0))}</b></div>
+          <div class="r-line"><span>Hostiles destroyed</span><b>${fmt(s.stats.kills)}</b></div>
+          <div class="r-line"><span>Capital ships destroyed</span><b>${s.stats.bosses}</b></div>
+          <div class="r-line"><span>Ships lost</span><b>${s.stats.deaths}</b></div>
+          <div class="r-line"><span>Systems visited</span><b>${s.visited.length} / ${this.galaxy.systems.length}</b></div>
+          <div class="r-line"><span>Run time</span><b>${timeLabel}</b></div>
+          <div class="r-line"><span>Score</span><b class="big">${fmt(score.total)}</b></div>
+          ${unlocks.length ? unlocks.map((u) => `<div class="r-line"><span>${u.name}</span><b class="accent">${u.reward}</b></div>`).join('') : ''}
+          ${note ? `<p class="muted small">${note}</p>` : ''}
+          <p class="submit-status muted small"></p>
+        </div>
+        <div class="menu-buttons">
+          <button class="btn primary big" data-act="menu">Main menu</button>
+          <button class="btn big" data-act="new">New game</button>
+          <button class="btn big" data-act="board">Lane Records</button>
+        </div>
+      </div>`;
+    const root = this.app.ui.querySelector('.gameover');
+    const status = root.querySelector('.submit-status');
+    clearSave();
+    this.postLostRun(status, callsign);
+    root.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'menu') {
+        this.state = null;
+        this.showMenu();
+      }
+      if (act === 'new') {
+        this.state = null;
+        this.showMenu('new');
+      }
+      if (act === 'board') {
+        this.state = null;
+        this.showLeaderboard();
+      }
+    });
+  }
+
+  async postLostRun(status, callsign) {
+    const s = this.state;
+    if (!status) return;
+    if (!s || s.cheated || s.won || !hasRunClock(s)) {
+      status.textContent = s?.cheated
+        ? 'Test run: the dev console was used, so it cannot be posted.'
+        : s?.won
+        ? 'This run already arrived at the Terminus. The Arrived row stays on the board.'
+        : 'This save cannot be posted to Lane Records.';
+      status.className = 'submit-status muted small';
+      return;
+    }
+    if (!CALLSIGN_RE.test(callsign)) {
+      status.textContent = 'Callsign must be 2–16 letters, numbers, spaces, or hyphens.';
+      status.className = 'submit-status warn small';
+      return;
+    }
+    status.textContent = 'Posting the lost run…';
+    status.className = 'submit-status muted small';
+    try {
+      saveCallsign(callsign);
+      s.callsign = callsign;
+      syncBoardMeta(s, this.galaxy);
+      const data = await postRun(s, 'lost', { callsign });
+      status.innerHTML = `Posted as Lost. Score rank <b class="accent">#${data.rank_score}</b>`;
+      status.className = 'submit-status small';
+    } catch (err) {
+      status.textContent =
+        err.message && err.message !== 'offline'
+          ? err.message
+          : 'The board is offline. Host the PHP API on this domain to post scores.';
+      status.className = 'submit-status warn small';
+    }
+  }
+
   pushLiveScore() {
     const s = this.state;
-    if (!hasRunClock(s) || s.won || s.cheated) return;
+    if (!hasRunClock(s) || s.won || s.lost || s.cheated) return;
     const callsign = (s.callsign || loadCallsign() || ensureCallsign()).trim();
     if (!CALLSIGN_RE.test(callsign)) return;
+    syncBoardMeta(s, this.galaxy);
     postRun(s, 'live', { callsign }).catch(() => {});
   }
 }

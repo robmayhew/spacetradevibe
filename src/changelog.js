@@ -1,6 +1,16 @@
-export const VERSION = '0.3.9';
+export const VERSION = '0.3.10';
 
 export const CHANGELOG = [
+  {
+    version: '0.3.10',
+    notes: [
+      'A run ends when you cannot pay station repair or a full rebuild fee',
+      'Lost runs stay on Lane Records with deliveries, earned credits, and route depth',
+      'Station repair is a clear bay action, and shop buys keep enough credits for the bill',
+      'Autofire stays on across flights, with a Display setting',
+      'Escort invite copies a join link; phones get a Fullscreen button on the menu',
+    ],
+  },
   {
     version: '0.3.9',
     notes: [

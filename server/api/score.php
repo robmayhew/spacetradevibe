@@ -46,7 +46,7 @@ function score_start(PDO $pdo, array $body): array {
     $runId = score_run_id($body);
     rate_bucket_hit($pdo, 'run-start', client_ip(), 3600, STARTS_PER_HOUR, 'Too many runs from this address. Try again later.');
     $run = score_fetch_run($pdo, $runId, false);
-    if ($run && ($run['status'] === 'done' || $run['status'] === 'void')) {
+    if ($run && score_is_closed($run['status'])) {
         json_error(409, 'This run is already posted.');
     }
     $token = bin2hex(random_bytes(32));
@@ -106,7 +106,7 @@ function score_submit(PDO $pdo, array $body): array {
             }
             score_fail($pdo, 409, 'This update was already posted.');
         }
-        if ($prev && ($prev['status'] === 'done' || $prev['status'] === 'void')) {
+        if ($prev && score_is_closed($prev['status'])) {
             if (score_same_result($prev, $norm)) {
                 $pdo->commit();
                 return score_rank_payload($pdo, (int) $prev['score'], (int) $prev['time_ms'], (string) ($prev['season'] ?: $norm['season']));
@@ -127,7 +127,7 @@ function score_submit(PDO $pdo, array $body): array {
         } elseif ($prev && $prev['status'] === 'live' && $norm['time_ms'] < (int) $prev['time_ms']) {
             score_fail($pdo, 400, 'Stale run update.');
         }
-        $needRate = $norm['status'] === 'done' || (!$prev && $norm['status'] !== 'void');
+        $needRate = $norm['status'] === 'done' || $norm['status'] === 'lost' || (!$prev && $norm['status'] !== 'void');
         if ($needRate) {
             $ip = client_ip();
             $pdo->prepare('DELETE FROM rate_hits WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)')->execute();
@@ -199,6 +199,8 @@ function score_normalize(array $body): array {
         $status = 'live';
     } elseif ($rawStatus === 'void') {
         $status = 'void';
+    } elseif ($rawStatus === 'lost') {
+        $status = 'lost';
     } else {
         $status = 'done';
     }
@@ -243,6 +245,31 @@ function score_normalize(array $body): array {
     if ($credits > $earned + 500) {
         json_error(400, 'Invalid credits.');
     }
+    $system = trim((string) ($body['system'] ?? ''));
+    if (strlen($system) > 48 || ($system !== '' && !preg_match('/^[A-Za-z0-9][A-Za-z0-9 .\'-]{0,47}$/', $system))) {
+        json_error(400, 'Invalid system.');
+    }
+    $rating = 0;
+    if (isset($body['rating']) && is_numeric($body['rating'])) {
+        $rating = (int) $body['rating'];
+        if ($rating < 0 || $rating > 10) {
+            json_error(400, 'Invalid rating.');
+        }
+    }
+    $visited = 0;
+    if (isset($body['visited']) && is_numeric($body['visited'])) {
+        $visited = (int) $body['visited'];
+        if ($visited < 0 || $visited > 1000) {
+            json_error(400, 'Invalid visited.');
+        }
+    }
+    $deepest = 0;
+    if (isset($body['deepest']) && is_numeric($body['deepest'])) {
+        $deepest = (int) $body['deepest'];
+        if ($deepest < 0 || $deepest > 10) {
+            json_error(400, 'Invalid deepest.');
+        }
+    }
     return [
         'callsign' => $callsign,
         'run_id' => $runId,
@@ -261,7 +288,15 @@ function score_normalize(array $body): array {
         'credits' => $credits,
         'pace' => $pace,
         'season' => $season,
+        'system' => $system,
+        'rating' => $rating,
+        'visited' => $visited,
+        'deepest' => $deepest,
     ];
+}
+
+function score_is_closed($status): bool {
+    return $status === 'done' || $status === 'void' || $status === 'lost';
 }
 
 function score_allow(int $elapsedMs, int $perMin): int {
@@ -300,9 +335,13 @@ function score_same_result(array $prev, array $norm): bool {
     if ($prev['status'] === 'void' && $norm['status'] === 'void') {
         return true;
     }
-    return $prev['status'] === 'done'
-        && $norm['status'] === 'done'
-        && (int) $prev['score'] === $norm['score']
+    if ($prev['status'] !== $norm['status']) {
+        return false;
+    }
+    if ($prev['status'] !== 'done' && $prev['status'] !== 'lost') {
+        return false;
+    }
+    return (int) $prev['score'] === $norm['score']
         && (int) $prev['time_ms'] === $norm['time_ms'];
 }
 
@@ -322,6 +361,10 @@ function score_body_hash(array $norm): string {
         $norm['credits'],
         $norm['pace'],
         $norm['season'],
+        $norm['system'],
+        $norm['rating'],
+        $norm['visited'],
+        $norm['deepest'],
         $norm['nonce'],
     ];
     return hash('sha256', json_encode($payload));
@@ -350,25 +393,31 @@ function score_fetch_run(PDO $pdo, string $runId, bool $lock): array|false {
 }
 
 function score_write_run(PDO $pdo, array $norm): void {
+    ensure_runs_board_meta($pdo);
+    $closed = '\'done\', \'void\', \'lost\'';
     $pdo->prepare(
-        'INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        "INSERT INTO runs (run_id, callsign, score, time_ms, earned, kills, bosses, deaths, deliveries, seed, status, paced, credits, pace, season, system_name, ship_rating, visited, deepest, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE
-           callsign = IF(status IN (\'done\', \'void\'), callsign, VALUES(callsign)),
-           score = IF(status IN (\'done\', \'void\'), score, VALUES(score)),
-           time_ms = IF(status IN (\'done\', \'void\'), time_ms, VALUES(time_ms)),
-           earned = IF(status IN (\'done\', \'void\'), earned, VALUES(earned)),
-           kills = IF(status IN (\'done\', \'void\'), kills, VALUES(kills)),
-           bosses = IF(status IN (\'done\', \'void\'), bosses, VALUES(bosses)),
-           deaths = IF(status IN (\'done\', \'void\'), deaths, VALUES(deaths)),
-           deliveries = IF(status IN (\'done\', \'void\'), deliveries, VALUES(deliveries)),
-           seed = IF(status IN (\'done\', \'void\'), seed, VALUES(seed)),
-           paced = IF(status IN (\'done\', \'void\'), paced, VALUES(paced)),
-           credits = IF(status IN (\'done\', \'void\'), credits, VALUES(credits)),
-           pace = IF(status IN (\'done\', \'void\'), pace, VALUES(pace)),
-           season = IF(status IN (\'done\', \'void\'), season, VALUES(season)),
-           status = IF(status IN (\'done\', \'void\'), status, VALUES(status)),
-           updated_at = IF(status IN (\'done\', \'void\'), updated_at, NOW())'
+           callsign = IF(status IN ($closed), callsign, VALUES(callsign)),
+           score = IF(status IN ($closed), score, VALUES(score)),
+           time_ms = IF(status IN ($closed), time_ms, VALUES(time_ms)),
+           earned = IF(status IN ($closed), earned, VALUES(earned)),
+           kills = IF(status IN ($closed), kills, VALUES(kills)),
+           bosses = IF(status IN ($closed), bosses, VALUES(bosses)),
+           deaths = IF(status IN ($closed), deaths, VALUES(deaths)),
+           deliveries = IF(status IN ($closed), deliveries, VALUES(deliveries)),
+           seed = IF(status IN ($closed), seed, VALUES(seed)),
+           paced = IF(status IN ($closed), paced, VALUES(paced)),
+           credits = IF(status IN ($closed), credits, VALUES(credits)),
+           pace = IF(status IN ($closed), pace, VALUES(pace)),
+           season = IF(status IN ($closed), season, VALUES(season)),
+           system_name = IF(status IN ($closed), system_name, VALUES(system_name)),
+           ship_rating = IF(status IN ($closed), ship_rating, VALUES(ship_rating)),
+           visited = IF(status IN ($closed), visited, VALUES(visited)),
+           deepest = IF(status IN ($closed), deepest, VALUES(deepest)),
+           status = IF(status IN ($closed), status, VALUES(status)),
+           updated_at = IF(status IN ($closed), updated_at, NOW())"
     )->execute([
         $norm['run_id'],
         $norm['callsign'],
@@ -385,6 +434,10 @@ function score_write_run(PDO $pdo, array $norm): void {
         $norm['credits'],
         $norm['pace'],
         $norm['season'],
+        $norm['system'],
+        $norm['rating'],
+        $norm['visited'],
+        $norm['deepest'],
     ]);
 }
 
@@ -397,7 +450,7 @@ function run_ranks(PDO $pdo, int $score, int $timeMs, string $season = 'beta'): 
     $rankScore = $pdo->prepare(
         'SELECT COUNT(*) FROM runs
          WHERE season = ?
-           AND (status = \'done\' OR (status = \'live\' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
+           AND (status IN (\'done\', \'lost\') OR (status = \'live\' AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)))
            AND (score > ? OR (score = ? AND time_ms < ?))'
     );
     $rankScore->execute([$season, $score, $score, $timeMs]);
